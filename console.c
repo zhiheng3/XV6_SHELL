@@ -122,14 +122,40 @@ panic(char *s)
 }
 
 //PAGEBREAK: 50
+#define KEY_HOME        0xE0
+#define KEY_END         0xE1
+#define KEY_UP          0xE2
+#define KEY_DN          0xE3
+#define KEY_LF          0xE4
+#define KEY_RT          0xE5
+#define KEY_PGUP        0xE6
+#define KEY_PGDN        0xE7
+#define KEY_INS         0xE8
+#define KEY_DEL         0xE9
+
 #define BACKSPACE 0x100
 #define CRTPORT 0x3d4
 static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
+
+#define INPUT_BUF 128
+struct {
+  struct spinlock lock;
+  char buf[INPUT_BUF];
+  uint r;  // Read index
+  uint w;  // Write index
+  uint e;  // Edit index
+
+  uint l;  // Input length
+  uint m;  // Mode 0,INSERT 1,REPLACE
+} input;
+
+#define C(x)  ((x)-'@')  // Control-x
 
 static void
 cgaputc(int c)
 {
   int pos;
+  int i;
   
   // Cursor position: col + 80*row.
   outb(CRTPORT, 14);
@@ -137,12 +163,28 @@ cgaputc(int c)
   outb(CRTPORT, 15);
   pos |= inb(CRTPORT+1);
 
-  if(c == '\n')
-    pos += 80 - pos%80;
-  else if(c == BACKSPACE){
-    if(pos > 0) --pos;
-  } else
-    crt[pos++] = (c&0xff) | 0x0700;  // black on white
+  switch(c){
+    case '\n': // Enter
+        pos += 80 - pos % 80;
+        break;
+    case BACKSPACE:
+        if (pos > 0)
+            --pos;
+        for (i = pos; i < pos + input.l - input.e; ++i)
+            crt[i] = crt[i + 1] | 0x0700;
+        crt[pos + input.l - input.e] = ' ' | 0x0700;
+        break;
+    case KEY_LF:
+        if (pos > 0)
+            --pos;
+        break;
+    case KEY_RT:
+        if (1)
+            ++pos;
+        break;
+    default:
+        crt[pos++] = (c & 0xff) | 0x0700; // White on black
+  }
   
   if((pos/80) >= 24){  // Scroll up.
     memmove(crt, crt+80, sizeof(crt[0])*23*80);
@@ -154,7 +196,7 @@ cgaputc(int c)
   outb(CRTPORT+1, pos>>8);
   outb(CRTPORT, 15);
   outb(CRTPORT+1, pos);
-  crt[pos] = ' ' | 0x0700;
+  //crt[pos] = ' ' | 0x0700;
 }
 
 void
@@ -165,7 +207,6 @@ consputc(int c)
     for(;;)
       ;
   }
-
   if(c == BACKSPACE){
     uartputc('\b'); uartputc(' '); uartputc('\b');
   } else
@@ -173,21 +214,11 @@ consputc(int c)
   cgaputc(c);
 }
 
-#define INPUT_BUF 128
-struct {
-  struct spinlock lock;
-  char buf[INPUT_BUF];
-  uint r;  // Read index
-  uint w;  // Write index
-  uint e;  // Edit index
-} input;
-
-#define C(x)  ((x)-'@')  // Control-x
-
 void
 consoleintr(int (*getc)(void))
 {
   int c;
+  int i;
 
   acquire(&input.lock);
   while((c = getc()) >= 0){
@@ -205,18 +236,39 @@ consoleintr(int (*getc)(void))
     case C('H'): case '\x7f':  // Backspace
       if(input.e != input.w){
         input.e--;
+        input.l--;
+        for (i = input.e; i < input.l; ++i)
+            input.buf[i] = input.buf[i + 1];
         consputc(BACKSPACE);
       }
       break;
-    default:
-      if(c != 0 && input.e-input.r < INPUT_BUF){
-        c = (c == '\r') ? '\n' : c;
-        input.buf[input.e++ % INPUT_BUF] = c;
-        consputc(c);
-        if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
-          input.w = input.e;
-          wakeup(&input.r);
+    case KEY_LF: // Left
+        if (input.e != input.w){
+            input.e--;
+            consputc(KEY_LF);
         }
+        break;
+    case KEY_RT: // Right
+        if (input.e < input.l){
+            input.e++;
+            consputc(KEY_RT);
+        }
+        break;
+    default:
+      if(c != 0 && input.l-input.r < INPUT_BUF){
+        c = (c == '\r') ? '\n' : c;
+        
+        if(c == '\n' || c == C('D') || input.l == input.r+INPUT_BUF - 1){
+          input.buf[input.l++ % INPUT_BUF] = '\n';
+          input.e = input.l;
+          consputc('\n');
+          input.w = input.l;
+          wakeup(&input.r);
+          break;
+        }
+        input.buf[input.e++ % INPUT_BUF] = c;
+        input.l++;
+        consputc(c);
       }
       break;
     }

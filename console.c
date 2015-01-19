@@ -151,6 +151,8 @@ struct {
 
 #define C(x)  ((x)-'@')  // Control-x
 
+#define WHITE_ON_BLACK 0x0700
+
 static void
 cgaputc(int c)
 {
@@ -171,8 +173,8 @@ cgaputc(int c)
         if (pos > 0)
             --pos;
         for (i = pos; i < pos + input.l - input.e; ++i)
-            crt[i] = crt[i + 1] | 0x0700;
-        crt[pos + input.l - input.e] = ' ' | 0x0700;
+            crt[i] = crt[i + 1] | WHITE_ON_BLACK;
+        crt[pos + input.l - input.e] = ' ' | WHITE_ON_BLACK;
         break;
     case KEY_LF:
         if (pos > 0)
@@ -183,7 +185,9 @@ cgaputc(int c)
             ++pos;
         break;
     default:
-        crt[pos++] = (c & 0xff) | 0x0700; // White on black
+        for (i = pos + input.l - input.e; i > pos; --i)
+            crt[i] = crt[i - 1] | WHITE_ON_BLACK;
+        crt[pos++] = (c & 0xff) | WHITE_ON_BLACK; // White on black
   }
   
   if((pos/80) >= 24){  // Scroll up.
@@ -258,6 +262,7 @@ consoleintr(int (*getc)(void))
       if(c != 0 && input.l-input.r < INPUT_BUF){
         c = (c == '\r') ? '\n' : c;
         
+        //Input enter
         if(c == '\n' || c == C('D') || input.l == input.r+INPUT_BUF - 1){
           input.buf[input.l++ % INPUT_BUF] = '\n';
           input.e = input.l;
@@ -266,6 +271,8 @@ consoleintr(int (*getc)(void))
           wakeup(&input.r);
           break;
         }
+        for (i = input.l; i > input.e; --i)
+            input.buf[i] = input.buf[i - 1];
         input.buf[input.e++ % INPUT_BUF] = c;
         input.l++;
         consputc(c);

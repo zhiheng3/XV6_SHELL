@@ -32,13 +32,16 @@ exec(char *path, char **argv)
   }
   iunlockput(ippath);
   
-  int flag, p1 = 0, p2, p3;
+  int flag, p1 = 0, p2, p3, notend=1;
   char pre[255];
   flag = 1;
-  while (1){
+  while (notend){
     p2 = 0;
     while(buf[p1] != 0 && buf[p1] != ';'){
       pre[p2++] = buf[p1++];
+    }
+    if (buf[p1] == 0){
+      notend = 0;
     }
     p1++;
     p3 = 0;

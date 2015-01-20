@@ -131,13 +131,84 @@ runcmd(struct cmd *cmd)
 }
 
 int
-getcmd(char *buf, int nbuf)
+getcmd(char *buf, int nbuf, char *currentpath)
 {
-  printf(2, "$ ");
+  int len;
+  if (currentpath[1] != 0){
+    currentpath[(len = strlen(currentpath)) - 1] = 0;
+    printf(2, "%s$ ", currentpath);
+    currentpath[len - 1] = '/';
+  }else{
+    printf(2, "%s$ ", currentpath);
+  }
+  
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
     return -1;
+  return 0;
+}
+
+static char*
+skipelem(char *path, char *name)
+{
+  char *s;
+  int len;
+
+  while(*path == '/')
+    path++;
+  if(*path == 0)
+    return 0;
+  s = path;
+  while(*path != '/' && *path != 0)
+    path++;
+  len = path - s;
+  memmove(name, s, len);
+  name[len] = 0;
+  while(*path == '/')
+    path++;
+  return path;
+}
+
+static int
+updatecurrentpath(char *path, char *currentpath)
+{
+  int i, j;
+  char name[255];
+  if(*path == '/'){
+    strcpy(currentpath, "/");
+    return 0;
+  }
+
+  while((path = skipelem(path, name)) != 0){
+    if (strcmp(name, ".") == 0){
+      continue;
+    }
+    if (strcmp(name, "..") == 0){
+      for (i = 0; currentpath[i]; i++)
+        ;
+      i--;
+      if (i == 0){
+        continue;
+      }
+      while (1){
+        currentpath[i--] = 0;
+        if (currentpath[i] == '/'){
+          break;
+        }
+      }
+      continue;
+    }
+    for (i = 0; currentpath[i]; i++)
+      ;
+    for (j = 0; name[j]; j++){
+      currentpath[i++] = name[j];    
+    }
+    currentpath[i++] = '/';
+    currentpath[i] = 0;
+      
+  }
+  
   return 0;
 }
 
@@ -146,7 +217,7 @@ main(void)
 {
   static char buf[100];
   int fd;
-  
+  char currentpath[255];
   // Assumes three file descriptors open.
   while((fd = open("console", O_RDWR)) >= 0){
     if(fd >= 3){
@@ -154,15 +225,18 @@ main(void)
       break;
     }
   }
-  
+  strcpy(currentpath, "/");
   // Read and run input commands.
-  while(getcmd(buf, sizeof(buf)) >= 0){
+  while(getcmd(buf, sizeof(buf), currentpath) >= 0){
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
       buf[strlen(buf)-1] = 0;  // chop \n
-      if(chdir(buf+3) < 0)
+      if(chdir(buf+3) < 0){
         printf(2, "cannot cd %s\n", buf+3);
+      }else{
+        updatecurrentpath(buf+3, currentpath);    
+      }
       continue;
     }
     if(fork1() == 0)

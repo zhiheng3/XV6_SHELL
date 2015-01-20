@@ -19,17 +19,17 @@
 
 
 int sys_passHistory(void){
-  struct inputHistory *p = 0;
+  struct history *p = 0;
   char *str = (char *)p;
-  argptr(0,&str,sizeof(struct inputHistory));
-  p = (struct inputHistory *)str;
-  memset(&hs,0,sizeof(struct inputHistory));
-  hs.len = p->len;
-  hs.currentcmd = p->currentcmd;
-  hs.lastusedcmd = p->lastusedcmd;
+  argptr(0,&str,sizeof(struct history));
+  p = (struct history *)str;
+  memset(&hs,0,sizeof(struct history));
+  hs.length = p->length;
+  hs.curcmd = p->curcmd;
+  hs.lastcmd = p->lastcmd;
   int i;
-  for(i = 0; i < hs.len;i++){
-    strncpy(hs.history[i],p->history[i],strlen(p->history[i]));
+  for(i = 0; i < hs.length;i++){
+    strncpy(hs.record[i],p->record[i],strlen(p->record[i]));
   }
   return 0;
 }

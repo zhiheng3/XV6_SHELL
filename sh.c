@@ -49,15 +49,12 @@ struct backcmd {
   struct cmd *cmd;
 };
 
-struct inputHistory hs;
+struct history hs;
 
-void initHistory(struct inputHistory* hs);
-void recordHistory(char* cmd);
-void addHistory(struct inputHistory* hs,char* cmd);
-void getHistory(struct inputHistory* hs);
-void setHistory(struct inputHistory* hs);
-char* substring(char*,char*,int,int);
-char* strcat(char*,char *);
+void initHistory(struct history* hs);
+void addHistory(struct history* hs,char* cmd);
+void getHistory(struct history* hs);
+void setHistory(struct history* hs);
 
 
 int fork1(void);  // Fork but panics on failure.
@@ -245,13 +242,12 @@ main(void)
   strcpy(currentpath, "/");
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf), currentpath) >= 0){
-
+    addHistory(&hs, buf);
+    passHistory(&hs);
+    setHistory(&hs);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
-      
-
-      addHistory(&hs,buf);
       buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0){
         printf(2, "cannot cd %s\n", buf+3);
@@ -260,12 +256,6 @@ main(void)
       }
       continue;
     }
-    addHistory(&hs,buf);
-    
-    passHistory(&hs);
-
-    
-    //setHistory(&hs);
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
@@ -597,192 +587,75 @@ nulterminate(struct cmd *cmd)
   return cmd;
 }
 
-
-
-
-
-
-void initHistory(struct inputHistory* hs){
-  hs->len = 1;
-  hs->lastusedcmd = 0;
-  hs->currentcmd = 0;
-
-  int i;
-  for(i = 0; i < H_NUMBER;i++){
-    memset(hs->history[i],0,H_LENGTH);
-    //hs->history[i][0] = '\0';
-  }
-  hs->history[0][0] = '\0';
-}
-/*
-void recordHistory(char* cmd){
-  
-  struct inode *ippath;
-  begin_op();
-  if((ippath = namei("/input_history")) == 0){
-      end_op();
-      return;
-  }
-  int n;
-  ilock(ippath);
-  if ((n = writei(ippath, buf, 0, strlen(cmd))) < 0){
-    return;
-  }
-  iunlockput(ippath);
-
-
-
-  const int bufSize = 256;
-  char buf[bufSize];
-  int fp = open("input_history",O_RDWR | O_CREATE);
-  while(read(fp,buf,bufSize)){
-    memset(buf,0,bufSize);
-  }
-  write(fp,cmd,strlen(cmd));
-}*/
-
-void addHistory(struct inputHistory* hs,char* cmd){
-  if(*cmd =='\n'){
-    return;
-  }
-  int cmdl = strlen(cmd);
-  if(hs->len == H_NUMBER){
-    int last = hs->lastusedcmd % H_NUMBER;
-    strcpy(hs->history[last],cmd);
-    hs->history[last][cmdl-1] = '\0';
-
-
-    hs->lastusedcmd = (last+1) % H_NUMBER;
-    hs->currentcmd = hs->lastusedcmd;
-    hs->history[hs->lastusedcmd][0] = '\0';
-  }
-  else{
-    strcpy(hs->history[hs->lastusedcmd],cmd);
-    hs->history[hs->lastusedcmd][cmdl-1] = '\0';
-
-    hs->history[hs->len][0] = '\0';
-    hs->currentcmd = hs->len;
-    hs->lastusedcmd = hs->currentcmd;
-    hs->len++;
-  }
+void initHistory(struct history* hs){
+  hs->length = 1;
+  hs->curcmd = 0;
+  hs->lastcmd = 0;
 }
 
-void getHistory(struct inputHistory* hs){ 
-  int fp = open("/input_history",O_RDWR | O_CREATE);  
+void addHistory(struct history* hs, char* cmd){
+  if (cmd[0] == '\n')
+    return;
+  int l = strlen(cmd);
+  if (cmd[l - 1] == '\n')
+    cmd[l - 1] = '\0';
 
-  const int bufSize = 256;
+  int last = hs->lastcmd;
+  strcpy(hs->record[last], cmd);
+  last = (last + 1) % H_NUMBER;
+  hs->record[last][0] = '\0';
+  hs->lastcmd = last;
+  hs->curcmd = last;
+  if (hs->length < H_NUMBER)
+    hs->length++;
+}
+
+void getHistory(struct history* hs){ 
+  const int bufSize = 128;
+  int fp = open("/.history", O_RDONLY | O_CREATE);
+  int i, length, pos;
+
   char buf[bufSize];
-  //all '\n' position
-  int posEnter[bufSize];
+  char tmp[bufSize];
 
-  //pervious line content left by '\n'
-  char preleft[bufSize];
-
-  //substring of every bufSize read
-  char subbuf[bufSize];
-  int i;
-  int history_number = 0;
-  int len;
-  memset(preleft,0,bufSize);
-
-  while((len = read(fp,buf,bufSize)) > 0){
-    int numEnter = 0;
-    memset(posEnter,0,bufSize);
-    for(i = 0;i < strlen(buf);i++){
-      if(buf[i] == '\n'){
-        posEnter[numEnter] = i;
-        numEnter++;
+  pos = 0;
+  initHistory(hs);
+  while ((length = read(fp, buf, bufSize)) > 0){
+    for (i = 0; i < length; ++i){
+      if (buf[i] == '\n'){
+        tmp[pos] = '\0';
+        addHistory(hs, tmp);
+        pos = 0;
+      }
+      else{
+        tmp[pos++] = buf[i];
       }
     }
-    
-    if(numEnter >= 1){
-      memset(hs->history[history_number],0,bufSize);
-      memset(subbuf,0,bufSize);
-      strcat(hs->history[history_number % H_NUMBER],preleft);
-      strcat(hs->history[history_number % H_NUMBER],substring(subbuf,buf,0,posEnter[0]));
-      history_number++;
-    }
-
-    for(i = 1; i <= numEnter - 1;i++){
-      memset(hs->history[history_number % H_NUMBER],0,bufSize);
-      memset(subbuf,0,bufSize);
-      char* s = substring(subbuf,buf,posEnter[i-1]+1,posEnter[i]);
-      strcpy(hs->history[history_number % H_NUMBER],s);
-      history_number++;     
-    }
-    if(len == bufSize || (posEnter[numEnter - 1] < len - 1)){
-      memset(preleft,0,bufSize);
-      memset(subbuf,0,bufSize);
-      char* s = substring(subbuf,buf,posEnter[numEnter-1],len);
-      strcpy(hs->history[history_number % H_NUMBER],s);
-    }
   }
+
   close(fp);
-  hs->history[(history_number) % H_NUMBER][0]='\0';
-  if(history_number+1 >= H_NUMBER){
-    hs->len = H_NUMBER;
+}
+
+void setHistory(struct history* hs){
+  if (!hs || hs->length == 0)
+    return ;
+
+  int fp = open(".history",O_WRONLY | O_CREATE);  
+  int pos, last;
+
+  last = hs->lastcmd;
+  if (hs->length == H_NUMBER){
+    pos = last + 1;
   }
   else{
-    hs->len = history_number+1;
+    pos = 0;
   }
 
-  hs->currentcmd = (history_number) % H_NUMBER;
-  hs->lastusedcmd = hs->currentcmd;
-
-  return;
-}
-
-void setHistory(struct inputHistory* hs){
-  if(!hs || hs->len == 0){
-    return;
-  }
-  int fp = open("/input_history",O_RDWR | O_CREATE);  
-
-  const int bufSize = 256;
-  char buf[bufSize];
-  while(read(fp,buf,bufSize)){
-    memset(buf,0,bufSize);
+  while (pos != last){
+    write(fp, hs->record[pos], strlen(hs->record[pos]));
+    write(fp, "\n", 1);
+    pos = (pos + 1) % H_NUMBER;
   }
 
-  int i;
-  if(hs->len >= H_NUMBER){
-    int last = hs->lastusedcmd;
-    for(i = 1;i <= H_NUMBER;i++){
-      int index = (last+i) % H_NUMBER;
-      write(fp,hs->history[index],strlen(hs->history[index]));
-      write(fp,"\n",1);
-    }
-  }
-  else{
-    for(i = 0;i < hs->len;i++){
-      write(fp,hs->history[i],strlen(hs->history[i]));
-      write(fp,"\n",1);
-
-    }
-  }
   close(fp);
-
-}
-
-char* substring(char *dst,char *src,int start,int end){
-  char* os;
-  os = dst;
-  int i;
-  for(i = start;i < end;i++){
-    *dst++ = src[i];
-  }
-  *dst++ = '\0';
-  return os;
-}
-
-char* strcat(char* dst,char* source){
-  char *os;
-  os = dst;
-  while(*os != '\0'){
-    os++;
-  }
-  while((*os++ = *source++) != '\0'){
-
-  }
-  return dst;
 }

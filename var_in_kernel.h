@@ -3,7 +3,7 @@
 
 #include "history.h"
 
-extern struct inputHistory hs;
+extern struct history hs;
 
 
 #endif

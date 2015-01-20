@@ -265,42 +265,28 @@ consoleintr(int (*getc)(void))
         }
         break;
     case KEY_UP:
-        if(hs.len == 0){
-          break;
-        }
-
+        if (hs.length != H_NUMBER && hs.curcmd == 0)
+            break;
+        if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER)
+            break;
 
         while(input.e != input.w){
           input.e--;
           input.l--;
           consputc(BACKSPACE);
         }
-        if(hs.len >= H_NUMBER){
-          hs.currentcmd = (hs.currentcmd-1 + H_NUMBER) % H_NUMBER;
-          if(hs.currentcmd == hs.lastusedcmd){
-            hs.currentcmd = (hs.currentcmd+1 + H_NUMBER) % H_NUMBER;
-          }
-        }
-        else{
-          hs.currentcmd = (hs.currentcmd-1 + hs.len) % hs.len;
-          if(hs.currentcmd == hs.lastusedcmd){
-            hs.currentcmd = 0;
-          }
-        }
-        len = strlen(hs.history[hs.currentcmd]);
+
+        hs.curcmd = (hs.curcmd + H_NUMBER - 1) % H_NUMBER;
+        len = strlen(hs.record[hs.curcmd]);
         for(i = 0;i < len;i++){
-          input.buf[input.e++ % INPUT_BUF] = hs.history[hs.currentcmd][i];
+          input.buf[input.e++ % INPUT_BUF] = hs.record[hs.curcmd][i];
           input.l++;
-          consputc(hs.history[hs.currentcmd][i]);
+          consputc(hs.record[hs.curcmd][i]);
         }
-
-
-        //consputc(BACKSPACE);
-
         break;
 
     case KEY_DN:
-        if(hs.len == 0){
+        if(hs.length == 0){
           break;
         } 
         while(input.e != input.w){
@@ -309,24 +295,24 @@ consoleintr(int (*getc)(void))
           consputc(BACKSPACE);
         } 
 
-        if(hs.len >= H_NUMBER){
-          hs.currentcmd = (hs.currentcmd+1) % H_NUMBER;
-          if((hs.currentcmd - hs.lastusedcmd + H_NUMBER) % H_NUMBER == 1){
-              hs.currentcmd = hs.lastusedcmd;
+        if(hs.length >= H_NUMBER){
+          hs.curcmd = (hs.curcmd+1) % H_NUMBER;
+          if((hs.curcmd - hs.lastcmd + H_NUMBER) % H_NUMBER == 1){
+              hs.curcmd = hs.lastcmd;
 
           }
         }
         else{
-          hs.currentcmd = (hs.currentcmd+1) % hs.len;
-          if(hs.currentcmd == 0){
-            hs.currentcmd = hs.lastusedcmd;
+          hs.curcmd = (hs.curcmd+1) % hs.length;
+          if(hs.curcmd == 0){
+            hs.curcmd = hs.lastcmd;
           }
         }  
-        len = strlen(hs.history[hs.currentcmd]);
+        len = strlen(hs.record[hs.curcmd]);
         for(i = 0;i < len;i++){
-          input.buf[input.e++ % INPUT_BUF] = hs.history[hs.currentcmd][i];
+          input.buf[input.e++ % INPUT_BUF] = hs.record[hs.curcmd][i];
           input.l++;
-          consputc(hs.history[hs.currentcmd][i]);
+          consputc(hs.record[hs.curcmd][i]);
         }
        
 
@@ -344,9 +330,6 @@ consoleintr(int (*getc)(void))
           input.e = input.l;
           consputc('\n');
           input.w = input.l;
-
-          
-
           wakeup(&input.r);
           break;
         }

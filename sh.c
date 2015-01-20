@@ -686,7 +686,6 @@ void getHistory(struct inputHistory* hs){
   memset(preleft,0,bufSize);
 
   while((len = read(fp,buf,bufSize)) > 0){
-    printf(2,"LEN is %d\n", len);
     int numEnter = 0;
     memset(posEnter,0,bufSize);
     for(i = 0;i < strlen(buf);i++){

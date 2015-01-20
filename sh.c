@@ -3,7 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
-
+#include "history.h"
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
@@ -48,6 +48,17 @@ struct backcmd {
   int type;
   struct cmd *cmd;
 };
+
+struct inputHistory hs;
+
+void initHistory(struct inputHistory* hs);
+void recordHistory(char* cmd);
+void addHistory(struct inputHistory* hs,char* cmd);
+void getHistory(struct inputHistory* hs);
+void setHistory(struct inputHistory* hs);
+char* substring(char*,char*,int,int);
+char* strcat(char*,char *);
+
 
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
@@ -212,11 +223,22 @@ updatecurrentpath(char *path, char *currentpath)
   return 0;
 }
 
+void mdbg(struct inputHistory *hs){
+  int i;
+  for(i = 0; i< hs->len;i++){
+    printf(2,"%d : %s\n", i,hs->history[i]);
+  }
+}
+
 int
 main(void)
 {
   static char buf[100];
   int fd;
+  initHistory(&hs);
+  getHistory(&hs);
+  passHistory(&hs);
+  
   char currentpath[255];
   // Assumes three file descriptors open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -228,9 +250,13 @@ main(void)
   strcpy(currentpath, "/");
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf), currentpath) >= 0){
+
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
+      
+
+      addHistory(&hs,buf);
       buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0){
         printf(2, "cannot cd %s\n", buf+3);
@@ -239,12 +265,21 @@ main(void)
       }
       continue;
     }
+    addHistory(&hs,buf);
+    mdbg(&hs);
+    passHistory(&hs);
+
+    //mdbg(&hs);
+    //setHistory(&hs);
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
   }
+  
   exit();
 }
+
+
 
 void
 panic(char *s)
@@ -565,4 +600,195 @@ nulterminate(struct cmd *cmd)
     break;
   }
   return cmd;
+}
+
+
+
+
+
+
+void initHistory(struct inputHistory* hs){
+  hs->len = 1;
+  hs->lastusedcmd = 0;
+  hs->currentcmd = 0;
+
+  int i;
+  for(i = 0; i < H_NUMBER;i++){
+    memset(hs->history[i],0,H_LENGTH);
+    //hs->history[i][0] = '\0';
+  }
+  hs->history[0][0] = '\0';
+}
+/*
+void recordHistory(char* cmd){
+  
+  struct inode *ippath;
+  begin_op();
+  if((ippath = namei("/input_history")) == 0){
+      end_op();
+      return;
+  }
+  int n;
+  ilock(ippath);
+  if ((n = writei(ippath, buf, 0, strlen(cmd))) < 0){
+    return;
+  }
+  iunlockput(ippath);
+
+
+
+  const int bufSize = 256;
+  char buf[bufSize];
+  int fp = open("input_history",O_RDWR | O_CREATE);
+  while(read(fp,buf,bufSize)){
+    memset(buf,0,bufSize);
+  }
+  write(fp,cmd,strlen(cmd));
+}*/
+
+void addHistory(struct inputHistory* hs,char* cmd){
+  if(*cmd =='\n'){
+    return;
+  }
+  int cmdl = strlen(cmd);
+  if(hs->len == H_NUMBER){
+    int last = hs->lastusedcmd % H_NUMBER;
+    strcpy(hs->history[last],cmd);
+    hs->history[last][cmdl-1] = '\0';
+
+
+    hs->lastusedcmd = (last+1) % H_NUMBER;
+    hs->currentcmd = hs->lastusedcmd;
+    hs->history[hs->lastusedcmd][0] = '\0';
+  }
+  else{
+    strcpy(hs->history[hs->lastusedcmd],cmd);
+    hs->history[hs->lastusedcmd][cmdl-1] = '\0';
+
+    hs->history[hs->len][0] = '\0';
+    hs->currentcmd = hs->len;
+    hs->lastusedcmd = hs->currentcmd;
+    hs->len++;
+  }
+}
+
+void getHistory(struct inputHistory* hs){ 
+  int fp = open("/input_history",O_RDWR | O_CREATE);  
+
+  const int bufSize = 256;
+  char buf[bufSize];
+  //all '\n' position
+  int posEnter[bufSize];
+
+  //pervious line content left by '\n'
+  char preleft[bufSize];
+
+  //substring of every bufSize read
+  char subbuf[bufSize];
+  int i;
+  int history_number = 0;
+  int len;
+  memset(preleft,0,bufSize);
+
+  while((len = read(fp,buf,bufSize)) > 0){
+    printf(2,"LEN is %d\n", len);
+    int numEnter = 0;
+    memset(posEnter,0,bufSize);
+    for(i = 0;i < strlen(buf);i++){
+      if(buf[i] == '\n'){
+        posEnter[numEnter] = i;
+        numEnter++;
+      }
+    }
+    
+    if(numEnter >= 1){
+      memset(hs->history[history_number],0,bufSize);
+      memset(subbuf,0,bufSize);
+      strcat(hs->history[history_number % H_NUMBER],preleft);
+      strcat(hs->history[history_number % H_NUMBER],substring(subbuf,buf,0,posEnter[0]));
+      history_number++;
+    }
+
+    for(i = 1; i <= numEnter - 1;i++){
+      memset(hs->history[history_number % H_NUMBER],0,bufSize);
+      memset(subbuf,0,bufSize);
+      char* s = substring(subbuf,buf,posEnter[i-1]+1,posEnter[i]);
+      strcpy(hs->history[history_number % H_NUMBER],s);
+      history_number++;     
+    }
+    if(len == bufSize || (posEnter[numEnter - 1] < len - 1)){
+      memset(preleft,0,bufSize);
+      memset(subbuf,0,bufSize);
+      char* s = substring(subbuf,buf,posEnter[numEnter-1],len);
+      strcpy(hs->history[history_number % H_NUMBER],s);
+    }
+  }
+  close(fp);
+  hs->history[(history_number) % H_NUMBER][0]='\0';
+  if(history_number+1 >= H_NUMBER){
+    hs->len = H_NUMBER;
+  }
+  else{
+    hs->len = history_number+1;
+  }
+
+  hs->currentcmd = (history_number) % H_NUMBER;
+  hs->lastusedcmd = hs->currentcmd;
+
+  return;
+}
+
+void setHistory(struct inputHistory* hs){
+  if(!hs || hs->len == 0){
+    return;
+  }
+  int fp = open("/input_history",O_RDWR | O_CREATE);  
+
+  const int bufSize = 256;
+  char buf[bufSize];
+  while(read(fp,buf,bufSize)){
+    memset(buf,0,bufSize);
+  }
+
+  int i;
+  if(hs->len >= H_NUMBER){
+    int last = hs->lastusedcmd;
+    for(i = 1;i <= H_NUMBER;i++){
+      int index = (last+i) % H_NUMBER;
+      write(fp,hs->history[index],strlen(hs->history[index]));
+      write(fp,"\n",1);
+    }
+  }
+  else{
+    for(i = 0;i < hs->len;i++){
+      write(fp,hs->history[i],strlen(hs->history[i]));
+      write(fp,"\n",1);
+
+    }
+  }
+  close(fp);
+
+}
+
+char* substring(char *dst,char *src,int start,int end){
+  char* os;
+  os = dst;
+  int i;
+  for(i = start;i < end;i++){
+    *dst++ = src[i];
+  }
+  *dst++ = '\0';
+  return os;
+}
+
+char* strcat(char* dst,char* source){
+  char *os;
+  os = dst;
+  while(*os != '\0'){
+    os++;
+  }
+  while((*os++ = *source++) != '\0'){
+
+  }
+  return dst;
 }

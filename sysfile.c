@@ -14,6 +14,27 @@
 #include "file.h"
 #include "fcntl.h"
 
+#include "history.h"
+#include "var_in_kernel.h"
+
+
+int sys_passHistory(void){
+  struct inputHistory *p = 0;
+  char *str = (char *)p;
+  argptr(0,&str,sizeof(struct inputHistory));
+  p = (struct inputHistory *)str;
+  memset(&hs,0,sizeof(struct inputHistory));
+  hs.len = p->len;
+  hs.currentcmd = p->currentcmd;
+  hs.lastusedcmd = p->lastusedcmd;
+  int i;
+  for(i = 0; i < hs.len;i++){
+    strncpy(hs.history[i],p->history[i],strlen(p->history[i]));
+  }
+  return 0;
+}
+
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -440,3 +461,6 @@ sys_pipe(void)
   fd[1] = fd1;
   return 0;
 }
+
+
+

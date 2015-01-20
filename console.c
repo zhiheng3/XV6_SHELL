@@ -14,6 +14,9 @@
 #include "proc.h"
 #include "x86.h"
 
+#include "history.h"
+#include "var_in_kernel.h"
+
 static void consputc(int);
 
 static int panicked = 0;
@@ -184,6 +187,7 @@ cgaputc(int c)
         if (1)
             ++pos;
         break;
+    
     default:
         for (i = pos + input.l - input.e; i > pos; --i)
             crt[i] = crt[i - 1] | WHITE_ON_BLACK;
@@ -223,6 +227,8 @@ consoleintr(int (*getc)(void))
 {
   int c;
   int i;
+  int len;
+
 
   acquire(&input.lock);
   while((c = getc()) >= 0){
@@ -247,7 +253,7 @@ consoleintr(int (*getc)(void))
       }
       break;
     case KEY_LF: // Left
-        if (input.e != input.w){
+        if (input.e != input.r){
             input.e--;
             consputc(KEY_LF);
         }
@@ -258,6 +264,76 @@ consoleintr(int (*getc)(void))
             consputc(KEY_RT);
         }
         break;
+    case KEY_UP:
+        if(hs.len == 0){
+          break;
+        }
+
+
+        while(input.e != input.w){
+          input.e--;
+          input.l--;
+          consputc(BACKSPACE);
+        }
+        if(hs.len >= H_NUMBER){
+          hs.currentcmd = (hs.currentcmd-1 + H_NUMBER) % H_NUMBER;
+          if(hs.currentcmd == hs.lastusedcmd){
+            hs.currentcmd = (hs.currentcmd+1 + H_NUMBER) % H_NUMBER;
+          }
+        }
+        else{
+          hs.currentcmd = (hs.currentcmd-1 + hs.len) % hs.len;
+          if(hs.currentcmd == hs.lastusedcmd){
+            hs.currentcmd = 0;
+          }
+        }
+        len = strlen(hs.history[hs.currentcmd]);
+        for(i = 0;i < len;i++){
+          input.buf[input.e++ % INPUT_BUF] = hs.history[hs.currentcmd][i];
+          input.l++;
+          consputc(hs.history[hs.currentcmd][i]);
+        }
+
+
+        //consputc(BACKSPACE);
+
+        break;
+
+    case KEY_DN:
+        if(hs.len == 0){
+          break;
+        } 
+        while(input.e != input.w){
+          input.e--;
+          input.l--;
+          consputc(BACKSPACE);
+        } 
+
+        if(hs.len >= H_NUMBER){
+          hs.currentcmd = (hs.currentcmd+1) % H_NUMBER;
+          if((hs.currentcmd - hs.lastusedcmd + H_NUMBER) % H_NUMBER == 1){
+              hs.currentcmd = hs.lastusedcmd;
+
+          }
+        }
+        else{
+          hs.currentcmd = (hs.currentcmd+1) % hs.len;
+          if(hs.currentcmd == 0){
+            hs.currentcmd = hs.lastusedcmd;
+          }
+        }  
+        len = strlen(hs.history[hs.currentcmd]);
+        for(i = 0;i < len;i++){
+          input.buf[input.e++ % INPUT_BUF] = hs.history[hs.currentcmd][i];
+          input.l++;
+          consputc(hs.history[hs.currentcmd][i]);
+        }
+       
+
+
+        
+        break;
+
     default:
       if(c != 0 && input.l-input.r < INPUT_BUF){
         c = (c == '\r') ? '\n' : c;
@@ -268,6 +344,9 @@ consoleintr(int (*getc)(void))
           input.e = input.l;
           consputc('\n');
           input.w = input.l;
+
+          
+
           wakeup(&input.r);
           break;
         }
@@ -349,4 +428,5 @@ consoleinit(void)
   picenable(IRQ_KBD);
   ioapicenable(IRQ_KBD, 0);
 }
+
 

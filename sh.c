@@ -223,12 +223,7 @@ updatecurrentpath(char *path, char *currentpath)
   return 0;
 }
 
-void mdbg(struct inputHistory *hs){
-  int i;
-  for(i = 0; i< hs->len;i++){
-    printf(2,"%d : %s\n", i,hs->history[i]);
-  }
-}
+
 
 int
 main(void)
@@ -266,10 +261,10 @@ main(void)
       continue;
     }
     addHistory(&hs,buf);
-    mdbg(&hs);
+    
     passHistory(&hs);
 
-    //mdbg(&hs);
+    
     //setHistory(&hs);
     if(fork1() == 0)
       runcmd(parsecmd(buf));

@@ -295,6 +295,26 @@ scheduler(void)
   }
 }
 
+
+void
+sendsignal(int sig)
+{
+  struct proc *p;
+  if (sig == 1){ // kill
+    acquire(&ptable.lock);
+    for(p = &ptable.proc[NPROC] -1; p >= ptable.proc; p--){
+      if(p->pid){
+        p->killed = 1;
+        if(p->state == SLEEPING){
+          p->state = RUNNABLE;
+        }
+        break;
+      }
+    }
+    release(&ptable.lock);
+  }
+}
+
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
 void

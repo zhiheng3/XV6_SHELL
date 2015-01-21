@@ -319,12 +319,20 @@ sys_open(void)
     end_op();
     return -1;
   }
+  
+  if(omode & O_OVER){
+    ip->size=0;
+  }
   iunlock(ip);
   end_op();
 
   f->type = FD_INODE;
   f->ip = ip;
-  f->off = 0;
+  if(omode & O_ADD){
+    f->off = ip->size;  
+  }else{
+    f->off = 0;
+  }
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
   return fd;

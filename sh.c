@@ -539,6 +539,9 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
   char *q, *eq;
 
   while(peek(ps, es, "12<>")){
+    if (((*ps)[0] == '1' || (*ps)[0] == '2') && (*ps)[1] != '>'){
+      break;
+    }
     tok = gettoken(ps, es, 0, 0);
     if(gettoken(ps, es, &q, &eq) != 'a')
       panic("missing file for redirection");
@@ -599,7 +602,7 @@ parseexec(char **ps, char *es)
     if((tok=gettoken(ps, es, &q, &eq)) == 0)
       break;
     if(tok != 'a')
-      panic("syntax");
+      panic("syntax!");
     cmd->argv[argc] = q;
     cmd->eargv[argc] = eq;
     argc++;

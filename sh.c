@@ -357,6 +357,7 @@ backcmd(struct cmd *subcmd)
 char whitespace[] = " \t\r\n\v";
 char symbols[] = "<|>&;()";
 
+
 int
 gettoken(char **ps, char *es, char **q, char **eq)
 {
@@ -387,6 +388,28 @@ gettoken(char **ps, char *es, char **q, char **eq)
       s++;
     }
     break;
+  case '1':
+    if(*(s+1) == '>'){
+      if(*(s+2) == '>'){
+        ret = '+';
+        s += 3;      
+      }else{
+        ret = '>';
+        s += 2;
+      }
+      break;
+    }
+  case '2':
+    if(*(s+1) == '>'){
+      if(*(s+2) == '>'){
+        ret = '/';
+        s += 3;      
+      }else{
+        ret = '*';
+        s += 2;
+      }
+      break;
+    }
   default:
     ret = 'a';
     while(s < es && !strchr(whitespace, *s) && !strchr(symbols, *s))
@@ -472,7 +495,7 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
   int tok;
   char *q, *eq;
 
-  while(peek(ps, es, "<>")){
+  while(peek(ps, es, "12<>")){
     tok = gettoken(ps, es, 0, 0);
     if(gettoken(ps, es, &q, &eq) != 'a')
       panic("missing file for redirection");
@@ -481,10 +504,16 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
       cmd = redircmd(cmd, q, eq, O_RDONLY, 0);
       break;
     case '>':
-      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE, 1);
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_OVER, 1);
       break;
     case '+':  // >>
-      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE, 1);
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_ADD, 1);
+      break;
+    case '*':  // 2>
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_OVER, 2);
+      break;
+    case '/':  // 2>>
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_ADD, 2);
       break;
     }
   }

@@ -355,6 +355,9 @@ consoleintr(int (*getc)(void))
   uartputc('\n');*/
   while((c = getc()) >= 0){
     switch(c){
+    case C('C'):  // kill current process
+      sendsignal(1);
+      break;
     case C('P'):  // Process listing.
       procdump();
       break;

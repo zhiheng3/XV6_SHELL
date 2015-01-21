@@ -27,6 +27,7 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
+	var_in_kernel.o\
 
 # Cross-compiling (e.g., on Mac OS X)
 # TOOLPREFIX = i386-jos-elf
@@ -173,8 +174,8 @@ UPROGS=\
 	_wc\
 	_zombie\
 
-fs.img: mkfs README path $(UPROGS)
-	./mkfs fs.img README path $(UPROGS)
+fs.img: mkfs README input_history path $(UPROGS)
+	./mkfs fs.img README input_history path $(UPROGS)
 
 -include *.d
 
@@ -187,7 +188,7 @@ clean:
 
 # make a printout
 FILES = $(shell grep -v '^\#' runoff.list)
-PRINT = runoff.list runoff.spec README path toc.hdr toc.ftr $(FILES)
+PRINT = runoff.list runoff.spec README input_history path toc.hdr toc.ftr $(FILES)
 
 xv6.pdf: $(PRINT)
 	./runoff

@@ -14,6 +14,9 @@
 #include "proc.h"
 #include "x86.h"
 
+#include "history.h"
+#include "var_in_kernel.h"
+
 static void consputc(int);
 
 static int panicked = 0;
@@ -153,11 +156,12 @@ struct {
 
 #define WHITE_ON_BLACK 0x0700
 
+void consputc(int c);
+
 static void
 cgaputc(int c)
 {
   int pos;
-  int i;
   
   // Cursor position: col + 80*row.
   outb(CRTPORT, 14);
@@ -165,30 +169,12 @@ cgaputc(int c)
   outb(CRTPORT, 15);
   pos |= inb(CRTPORT+1);
 
-  switch(c){
-    case '\n': // Enter
-        pos += 80 - pos % 80;
-        break;
-    case BACKSPACE:
-        if (pos > 0)
-            --pos;
-        for (i = pos; i < pos + input.l - input.e; ++i)
-            crt[i] = crt[i + 1] | WHITE_ON_BLACK;
-        crt[pos + input.l - input.e] = ' ' | WHITE_ON_BLACK;
-        break;
-    case KEY_LF:
-        if (pos > 0)
-            --pos;
-        break;
-    case KEY_RT:
-        if (1)
-            ++pos;
-        break;
-    default:
-        for (i = pos + input.l - input.e; i > pos; --i)
-            crt[i] = crt[i - 1] | WHITE_ON_BLACK;
-        crt[pos++] = (c & 0xff) | WHITE_ON_BLACK; // White on black
-  }
+  if(c == '\n')
+    pos += 80 - pos%80;
+  else if(c == BACKSPACE){
+    if(pos > 0) --pos;
+  } else
+    crt[pos++] = (c&0xff) | 0x0700;  // black on white
   
   if((pos/80) >= 24){  // Scroll up.
     memmove(crt, crt+80, sizeof(crt[0])*23*80);
@@ -200,7 +186,7 @@ cgaputc(int c)
   outb(CRTPORT+1, pos>>8);
   outb(CRTPORT, 15);
   outb(CRTPORT+1, pos);
-  //crt[pos] = ' ' | 0x0700;
+  crt[pos] = ' ' | 0x0700;
 }
 
 void
@@ -218,13 +204,155 @@ consputc(int c)
   cgaputc(c);
 }
 
+int
+getcursor()
+{
+    int pos;
+    // Cursor position: col + 80*row.
+    outb(CRTPORT, 14);
+    pos = inb(CRTPORT+1) << 8;
+    outb(CRTPORT, 15);
+    pos |= inb(CRTPORT+1);
+    return pos;
+}
+
+void
+setcursor(int pos)
+{
+    int old = getcursor();
+    if (pos == -1)
+        pos = old + 80 - old % 80;
+    else
+        input.e += pos - old;
+
+    if((pos/80) >= 24){  // Scroll up.
+        memmove(crt, crt+80, sizeof(crt[0])*23*80);
+        pos -= 80;
+        memset(crt+pos, 0, sizeof(crt[0])*(24*80 - pos));
+    }   
+    outb(CRTPORT, 14);
+    outb(CRTPORT+1, pos>>8);
+    outb(CRTPORT, 15);
+    outb(CRTPORT+1, pos);
+}
+
+void 
+insertc(int c)
+{
+    int pos = getcursor();
+    int i, j;
+    if (c != 0 && input.l - input.r < INPUT_BUF){
+        for (i = input.l, j = pos + input.l - input.e; i > input.e; --i, --j){
+            input.buf[i] = input.buf[i - 1];
+            crt[j] = crt[j - 1] | WHITE_ON_BLACK;
+        }
+        input.buf[input.e % INPUT_BUF] = c;
+        input.l++;
+        
+        if (c == '\n'){
+            input.e++;
+            setcursor(-1);
+        }
+        else
+        {
+            crt[pos++] = (c & 0xff) | WHITE_ON_BLACK;
+            setcursor(pos);
+        }
+
+    }
+}
+
+void
+replacec(int c)
+{
+    int pos = getcursor();
+    input.buf[input.e] = c;
+    crt[pos] = c;
+}
+
+//Delete a character at pos
+//mode 0,backspace 1,delete
+void
+deletec(int mode)
+{
+    int pos = getcursor();
+    if (mode == 0){
+        if (input.e != input.w && pos > 0){
+            input.l--;
+            pos--;
+            setcursor(pos);
+        }
+        else
+            return ;
+    }
+    if (mode == 1){
+        if (input.e < input.l){
+            input.l--;
+        }
+        else
+            return ;
+    }
+
+    int i, j;
+    for (i = input.e, j = pos; i < input.l; ++i, ++j){
+        input.buf[i] = input.buf[i + 1];
+        crt[j] = crt[j + 1] | WHITE_ON_BLACK;
+    }
+    crt[j] = ' ' | WHITE_ON_BLACK;
+}
+
+void
+clearline()
+{
+    int i;
+    int pos = getcursor();
+    pos -= (input.e - input.w);
+    setcursor(pos);
+    for (i = pos; i < pos + input.l; ++i){
+        crt[i] = ' ' | WHITE_ON_BLACK;
+    }
+    input.l = input.w;
+}
+
+void
+insertline(char* buf)
+{
+    int i, j, k;
+    int pos = getcursor();
+    input.l = input.w + strlen(buf);
+    for (i = input.w, j = pos, k = 0; i < input.l; ++i, ++j, ++k){
+        input.buf[i] = buf[k];
+        crt[j] = buf[k] | WHITE_ON_BLACK;
+    }
+    setcursor(pos + strlen(buf));
+}
+
+void
+uartprint(int k)
+{
+    if (k < 10)
+      uartputc(k + 48);
+    else{
+      uartprint(k / 10);
+      uartputc(k % 10 + 48);
+    }
+}
+
 void
 consoleintr(int (*getc)(void))
 {
   int c;
-  int i;
 
   acquire(&input.lock);
+  int pos = getcursor();/*
+  int i;
+    uartprint(input.e);
+  uartputc(';');
+  uartprint(pos);
+  uartputc(';');
+  for (i = input.w; i < input.l; ++i)
+    uartputc(input.buf[i]);
+  uartputc('\n');*/
   while((c = getc()) >= 0){
     switch(c){
     case C('P'):  // Process listing.
@@ -233,49 +361,75 @@ consoleintr(int (*getc)(void))
     case C('U'):  // Kill line.
       while(input.e != input.w &&
             input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
+        deletec(0);
       }
       break;
     case C('H'): case '\x7f':  // Backspace
       if(input.e != input.w){
-        input.e--;
-        input.l--;
-        for (i = input.e; i < input.l; ++i)
-            input.buf[i] = input.buf[i + 1];
-        consputc(BACKSPACE);
+        deletec(0);
       }
       break;
+    case KEY_HOME: //Home
+        setcursor(pos - input.e);
+        break;
+    case KEY_END: // End
+        setcursor(pos + input.l - input.e);
+        break;
+    case KEY_PGUP:
+        break;
+    case KEY_PGDN:
+        break;
+    case KEY_INS:
+        break;
+    case KEY_DEL:
+        deletec(1);
+        break;
     case KEY_LF: // Left
         if (input.e != input.w){
-            input.e--;
-            consputc(KEY_LF);
+            setcursor(pos - 1);
         }
         break;
     case KEY_RT: // Right
         if (input.e < input.l){
-            input.e++;
-            consputc(KEY_RT);
+            setcursor(pos + 1);
         }
         break;
-    default:
+    case KEY_UP:
+        if (hs.length != H_NUMBER && hs.curcmd == 0)
+            break;
+        if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER)
+            break;
+        uartputc('h');
+        clearline();
+        hs.curcmd = (hs.curcmd + H_NUMBER - 1) % H_NUMBER;
+        insertline(hs.record[hs.curcmd]);
+        break;
+
+    case KEY_DN:
+        if (hs.curcmd == hs.lastcmd)
+            break;
+        clearline();
+        hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
+        insertline(hs.record[hs.curcmd]);
+        break;
+
+    default: //Insert
       if(c != 0 && input.l-input.r < INPUT_BUF){
         c = (c == '\r') ? '\n' : c;
         
         //Input enter
-        if(c == '\n' || c == C('D') || input.l == input.r+INPUT_BUF - 1){
-          input.buf[input.l++ % INPUT_BUF] = '\n';
-          input.e = input.l;
-          consputc('\n');
-          input.w = input.l;
-          wakeup(&input.r);
-          break;
+        if(c == '\n' || c == C('D') || input.l == input.r + INPUT_BUF - 1){
+            //setcursor(-1);
+            //input.buf[input.l++ % INPUT_BUF] = '\n';
+            //input.e = input.l;
+            setcursor(pos + input.l - input.e);
+            insertc('\n');
+            input.w = input.l;
+            wakeup(&input.r);
+            break;
         }
-        for (i = input.l; i > input.e; --i)
-            input.buf[i] = input.buf[i - 1];
-        input.buf[input.e++ % INPUT_BUF] = c;
-        input.l++;
-        consputc(c);
+        else
+            insertc(c);
       }
       break;
     }
@@ -349,4 +503,5 @@ consoleinit(void)
   picenable(IRQ_KBD);
   ioapicenable(IRQ_KBD, 0);
 }
+
 

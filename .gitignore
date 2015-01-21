@@ -30,6 +30,10 @@
 
 # Temp
 *~
-C
-B
-# 
+# xv6
+*.d
+*.asm
+*.S
+*.sym
+_*
+*.img

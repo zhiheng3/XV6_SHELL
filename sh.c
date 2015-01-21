@@ -3,7 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
-
+#include "history.h"
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
@@ -48,6 +48,14 @@ struct backcmd {
   int type;
   struct cmd *cmd;
 };
+
+struct history hs;
+
+void initHistory(struct history* hs);
+void addHistory(struct history* hs,char* cmd);
+void getHistory(struct history* hs);
+void setHistory(struct history* hs);
+
 
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
@@ -212,11 +220,17 @@ updatecurrentpath(char *path, char *currentpath)
   return 0;
 }
 
+
+
 int
 main(void)
 {
   static char buf[100];
   int fd;
+  initHistory(&hs);
+  getHistory(&hs);
+  passHistory(&hs);
+  
   char currentpath[255];
   // Assumes three file descriptors open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -228,6 +242,9 @@ main(void)
   strcpy(currentpath, "/");
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf), currentpath) >= 0){
+    addHistory(&hs, buf);
+    passHistory(&hs);
+    setHistory(&hs);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
@@ -243,8 +260,11 @@ main(void)
       runcmd(parsecmd(buf));
     wait();
   }
+  
   exit();
 }
+
+
 
 void
 panic(char *s)
@@ -565,4 +585,76 @@ nulterminate(struct cmd *cmd)
     break;
   }
   return cmd;
+}
+
+void initHistory(struct history* hs){
+  hs->length = 1;
+  hs->curcmd = 0;
+  hs->lastcmd = 0;
+}
+
+void addHistory(struct history* hs, char* cmd){
+  if (cmd[0] == '\n')
+    return;
+  int l = strlen(cmd);
+  int last = hs->lastcmd;
+  strcpy(hs->record[last], cmd);
+  if (hs->record[last][l - 1] == '\n')
+    hs->record[last][l - 1] = '\0';
+  last = (last + 1) % H_NUMBER;
+  hs->record[last][0] = '\0';
+  hs->lastcmd = last;
+  hs->curcmd = last;
+  if (hs->length < H_NUMBER)
+    hs->length++;
+}
+
+void getHistory(struct history* hs){ 
+  const int bufSize = 128;
+  int fp = open("/.history", O_RDONLY | O_CREATE);
+  int i, length, pos;
+
+  char buf[bufSize];
+  char tmp[bufSize];
+
+  pos = 0;
+  initHistory(hs);
+  while ((length = read(fp, buf, bufSize)) > 0){
+    for (i = 0; i < length; ++i){
+      if (buf[i] == '\n'){
+        tmp[pos] = '\0';
+        addHistory(hs, tmp);
+        pos = 0;
+      }
+      else{
+        tmp[pos++] = buf[i];
+      }
+    }
+  }
+
+  close(fp);
+}
+
+void setHistory(struct history* hs){
+  if (!hs || hs->length == 0)
+    return ;
+
+  int fp = open("/.history",O_WRONLY | O_CREATE);  
+  int pos, last;
+
+  last = hs->lastcmd;
+  if (hs->length == H_NUMBER){
+    pos = last + 1;
+  }
+  else{
+    pos = 0;
+  }
+
+  while (pos != last){
+    write(fp, hs->record[pos], strlen(hs->record[pos]));
+    write(fp, "\n", 1);
+    pos = (pos + 1) % H_NUMBER;
+  }
+
+  close(fp);
 }

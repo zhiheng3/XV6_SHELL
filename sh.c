@@ -56,7 +56,7 @@ struct history hs;
 void initHistory(struct history* hs);
 void addHistory(struct history* hs,char* cmd);
 void getHistory(struct history* hs);
-void setHistory(struct history* hs);
+void setHistory(char* cmd);
 
 #define FILENUMBER 100
 #define FILELENGTH 128
@@ -287,7 +287,7 @@ main(void)
   while(getcmd(buf, sizeof(buf), currentpath) >= 0){
     addHistory(&hs, buf);
     passHistory(&hs);
-    setHistory(&hs);
+    setHistory(buf);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
@@ -710,11 +710,18 @@ void getHistory(struct history* hs){
   close(fp);
 }
 
+void setHistory(char* cmd){
+    int fp = open("/.history", O_WRONLY | O_CREATE | O_ADD);
+    write(fp, cmd, strlen(cmd));
+    close(fp);
+}
+
+/*
 void setHistory(struct history* hs){
   if (!hs || hs->length == 0)
     return ;
 
-  int fp = open("/.history",O_WRONLY | O_CREATE);  
+  int fp = open("/.history",O_WRONLY | O_CREATE | O_ADD);  
   int pos, last;
 
   last = hs->lastcmd;
@@ -733,7 +740,7 @@ void setHistory(struct history* hs){
 
   close(fp);
 }
-
+*/
 
 //input = filename
 //pattern = char[] contains wildcards

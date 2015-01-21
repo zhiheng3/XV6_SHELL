@@ -222,13 +222,139 @@ consputc(int c)
   cgaputc(c);
 }
 
+int
+getcursor()
+{
+    int pos;
+    // Cursor position: col + 80*row.
+    outb(CRTPORT, 14);
+    pos = inb(CRTPORT+1) << 8;
+    outb(CRTPORT, 15);
+    pos |= inb(CRTPORT+1);
+    return pos;
+}
+
+void
+setcursor(int pos)
+{
+    int old = getcursor();
+    if (pos == -1)
+        pos = old + 80 - old % 80;
+    else
+        input.e += pos - old;
+
+    outb(CRTPORT, 14);
+    outb(CRTPORT+1, pos>>8);
+    outb(CRTPORT, 15);
+    outb(CRTPORT+1, pos);
+}
+
+void 
+insertc(int c)
+{
+    int pos = getcursor();
+    int i, j;
+    if (c != 0 && input.l - input.r < INPUT_BUF){
+        for (i = input.l, j = pos + input.l - input.e; i > input.e; --i, --j){
+            input.buf[i] = input.buf[i - 1];
+            crt[j] = crt[j - 1] | WHITE_ON_BLACK;
+        }
+        input.buf[input.e % INPUT_BUF] = c;
+        input.l++;
+        if (c == '\n'){
+            input.e++;
+            setcursor(-1);
+        }
+        else
+        {
+            crt[pos++] = (c & 0xff) | WHITE_ON_BLACK;
+            setcursor(pos);
+        }
+
+    }
+}
+
+void
+replacec(int c)
+{
+    int pos = getcursor();
+    input.buf[input.e] = c;
+    crt[pos] = c;
+}
+
+//Delete a character at pos
+//mode 0,backspace 1,delete
+void
+deletec(int mode)
+{
+    int pos = getcursor();
+    if (mode == 0){
+        if (input.e != input.w && pos > 0){
+            input.l--;
+            pos--;
+            setcursor(pos);
+        }
+        else
+            return ;
+    }
+    if (mode == 1){
+        if (input.e < input.l){
+            input.l--;
+        }
+        else
+            return ;
+    }
+
+    int i, j;
+    for (i = input.e, j = pos; i < input.l; ++i, ++j){
+        input.buf[i] = input.buf[i + 1];
+        crt[j] = crt[j + 1] | WHITE_ON_BLACK;
+    }
+    crt[j] = ' ' | WHITE_ON_BLACK;
+}
+
+void
+clearline()
+{
+    int i;
+    int pos = getcursor();
+    pos -= (input.e - input.w);
+    setcursor(pos);
+    for (i = pos; i < pos + input.l; ++i){
+        crt[i] = ' ' | WHITE_ON_BLACK;
+    }
+    input.l = input.w;
+}
+
+void
+insertline(char* buf)
+{
+    int i, j;
+    int pos = getcursor();
+    input.l += strlen(buf);
+    for (i = 0, j = pos; i < input.l; ++i, ++j){
+        input.buf[i] = buf[i];
+        crt[j] = buf[i] | WHITE_ON_BLACK;
+    }
+    setcursor(pos + strlen(buf));
+}
+
+void 
+scrollup()
+{
+    int pos = getcursor();
+    if((pos/80) >= 24){  // Scroll up.
+        memmove(crt, crt+80, sizeof(crt[0])*23*80);
+        pos -= 80;
+        memset(crt+pos, 0, sizeof(crt[0])*(24*80 - pos));
+    }   
+}
+
 void
 consoleintr(int (*getc)(void))
 {
   int c;
-  int i;
-  int len;
-
+  int pos = getcursor();
 
   acquire(&input.lock);
   while((c = getc()) >= 0){
@@ -239,29 +365,37 @@ consoleintr(int (*getc)(void))
     case C('U'):  // Kill line.
       while(input.e != input.w &&
             input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
+        deletec(0);
       }
       break;
     case C('H'): case '\x7f':  // Backspace
       if(input.e != input.w){
-        input.e--;
-        input.l--;
-        for (i = input.e; i < input.l; ++i)
-            input.buf[i] = input.buf[i + 1];
-        consputc(BACKSPACE);
+        deletec(0);
       }
       break;
+    case KEY_HOME: //Home
+        setcursor(pos - input.e);
+        break;
+    case KEY_END: // End
+        setcursor(pos + input.l - input.e);
+        break;
+    case KEY_PGUP:
+        break;
+    case KEY_PGDN:
+        break;
+    case KEY_INS:
+        break;
+    case KEY_DEL:
+        deletec(1);
+        break;
     case KEY_LF: // Left
-        if (input.e != input.r){
-            input.e--;
-            consputc(KEY_LF);
+        if (input.e != input.w){
+            setcursor(pos - 1);
         }
         break;
     case KEY_RT: // Right
         if (input.e < input.l){
-            input.e++;
-            consputc(KEY_RT);
+            setcursor(pos + 1);
         }
         break;
     case KEY_UP:
@@ -269,79 +403,38 @@ consoleintr(int (*getc)(void))
             break;
         if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER)
             break;
-
-        while(input.e != input.w){
-          input.e--;
-          input.l--;
-          consputc(BACKSPACE);
-        }
-
+        clearline();
         hs.curcmd = (hs.curcmd + H_NUMBER - 1) % H_NUMBER;
-        len = strlen(hs.record[hs.curcmd]);
-        for(i = 0;i < len;i++){
-          input.buf[input.e++ % INPUT_BUF] = hs.record[hs.curcmd][i];
-          input.l++;
-          consputc(hs.record[hs.curcmd][i]);
-        }
+        insertline(hs.record[hs.curcmd]);
         break;
 
     case KEY_DN:
-        if(hs.length == 0){
-          break;
-        } 
-        while(input.e != input.w){
-          input.e--;
-          input.l--;
-          consputc(BACKSPACE);
-        } 
-
-        if(hs.length >= H_NUMBER){
-          hs.curcmd = (hs.curcmd+1) % H_NUMBER;
-          if((hs.curcmd - hs.lastcmd + H_NUMBER) % H_NUMBER == 1){
-              hs.curcmd = hs.lastcmd;
-
-          }
-        }
-        else{
-          hs.curcmd = (hs.curcmd+1) % hs.length;
-          if(hs.curcmd == 0){
-            hs.curcmd = hs.lastcmd;
-          }
-        }  
-        len = strlen(hs.record[hs.curcmd]);
-        for(i = 0;i < len;i++){
-          input.buf[input.e++ % INPUT_BUF] = hs.record[hs.curcmd][i];
-          input.l++;
-          consputc(hs.record[hs.curcmd][i]);
-        }
-       
-
-
-        
+        if (hs.curcmd == hs.lastcmd)
+            break;
+        clearline();
+        hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
+        insertline(hs.record[hs.curcmd]);
         break;
 
-    default:
+    default: //Insert
       if(c != 0 && input.l-input.r < INPUT_BUF){
         c = (c == '\r') ? '\n' : c;
         
         //Input enter
-        if(c == '\n' || c == C('D') || input.l == input.r+INPUT_BUF - 1){
-          input.buf[input.l++ % INPUT_BUF] = '\n';
-          input.e = input.l;
-          consputc('\n');
-          input.w = input.l;
-          wakeup(&input.r);
-          break;
+        if(c == '\n' || c == C('D') || input.l == input.r + INPUT_BUF - 1){
+            setcursor(pos + input.l - input.e);
+            insertc('\n');
+            input.w = input.l;
+            wakeup(&input.r);
+            break;
         }
-        for (i = input.l; i > input.e; --i)
-            input.buf[i] = input.buf[i - 1];
-        input.buf[input.e++ % INPUT_BUF] = c;
-        input.l++;
-        consputc(c);
+        else
+            insertc(c);
       }
       break;
     }
   }
+  scrollup();
   release(&input.lock);
 }
 

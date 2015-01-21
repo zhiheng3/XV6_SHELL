@@ -18,11 +18,50 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
 
-  begin_op();
-  if((ip = namei(path)) == 0){
+
+  char buf[1024];
+  struct inode *ippath;
+  if((ippath = namei("/path")) == 0){
+      end_op();
+      return(-1);
+  }
+  int n;
+  ilock(ippath);
+  if ((n = readi(ippath, buf, 0, sizeof(buf))) < 0){
+    return(-1);
+  }
+  iunlockput(ippath);
+  
+  int flag, p1 = 0, p2, p3, notend=1;
+  char pre[255];
+  flag = 1;
+  while (notend){
+    p2 = 0;
+    while(buf[p1] != 0 && buf[p1] != ';'){
+      pre[p2++] = buf[p1++];
+    }
+    if (buf[p1] == 0){
+      notend = 0;
+    }
+    p1++;
+    p3 = 0;
+    p2 = 1;
+    pre[0]='/';
+    while(path[p3]){
+      pre[p2++] = path[p3++];
+    }
+    pre[p2]=0;
+    begin_op();
+    if((ip = namei(pre)) != 0){
+      flag = 0;
+      break;
+    }
     end_op();
+  }
+  if (flag){
     return -1;
   }
+
   ilock(ip);
   pgdir = 0;
 

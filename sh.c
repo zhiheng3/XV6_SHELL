@@ -3,7 +3,9 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
-
+#include "history.h"
+#include "stat.h"
+#include "fs.h"
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
@@ -49,6 +51,32 @@ struct backcmd {
   struct cmd *cmd;
 };
 
+struct history hs;
+
+void initHistory(struct history* hs);
+void addHistory(struct history* hs,char* cmd);
+void getHistory(struct history* hs);
+void setHistory(char* cmd);
+
+#define FILENUMBER 100
+#define FILELENGTH 128
+
+struct fileList
+{
+  int len;
+  char list[FILENUMBER][FILELENGTH];
+};
+struct fileList filelist;
+struct fileList templist;
+void printFilelsit(struct fileList* fl);
+void getFilelist(char *path,struct fileList *fl);
+void addFilelist(struct fileList *fl,char* filename);
+void initFilelist();
+char* fmtname(char *path);
+int matchesPattern( char* input, char* pattern);
+int checkWildcards(char *str);
+void getMatchList(char* filename,struct fileList *allfile,struct fileList *matchfile);
+
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
@@ -64,6 +92,9 @@ runcmd(struct cmd *cmd)
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
 
+  initFilelist(&filelist);
+  initFilelist(&templist);
+
   if(cmd == 0)
     exit();
   
@@ -75,8 +106,28 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit();
+
+    //add wildcard judgement
+    getFilelist(".",&filelist);
+    int i;
+    for(i = 1;ecmd->argv[i] != 0;i++){
+      if(checkWildcards(ecmd->argv[i])){
+        getMatchList(ecmd->argv[i],&filelist,&templist);
+      }
+    }
+    for(i = 0;i < templist.len;i++){
+      if(ecmd->argv[i+1] == 0){
+        ecmd->argv[i+1] = malloc((MAXARGS)*sizeof(char));
+        ecmd->argv[i+1][0] = '\0';
+      }
+      int l = strlen(templist.list[i]);
+      strcpy(ecmd->argv[i+1],templist.list[i]);
+      ecmd->argv[i+1][l] = '\0';
+    }
+
+
     exec(ecmd->argv[0], ecmd->argv);
-    printf(2, "exec %s failed\n", ecmd->argv[0]);
+    printf(2,"exec %s failed\n", ecmd->argv[0]);
     break;
 
   case REDIR:
@@ -131,9 +182,17 @@ runcmd(struct cmd *cmd)
 }
 
 int
-getcmd(char *buf, int nbuf)
+getcmd(char *buf, int nbuf, char *currentpath)
 {
-  printf(2, "$ ");
+  int len;
+  if (currentpath[1] != 0){
+    currentpath[(len = strlen(currentpath)) - 1] = 0;
+    printf(2, "%s$ ", currentpath);
+    currentpath[len - 1] = '/';
+  }else{
+    printf(2, "%s$ ", currentpath);
+  }
+  
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
@@ -141,12 +200,81 @@ getcmd(char *buf, int nbuf)
   return 0;
 }
 
+static char*
+skipelem(char *path, char *name)
+{
+  char *s;
+  int len;
+
+  while(*path == '/')
+    path++;
+  if(*path == 0)
+    return 0;
+  s = path;
+  while(*path != '/' && *path != 0)
+    path++;
+  len = path - s;
+  memmove(name, s, len);
+  name[len] = 0;
+  while(*path == '/')
+    path++;
+  return path;
+}
+
+static int
+updatecurrentpath(char *path, char *currentpath)
+{
+  int i, j;
+  char name[255];
+  if(*path == '/'){
+    strcpy(currentpath, "/");
+    return 0;
+  }
+
+  while((path = skipelem(path, name)) != 0){
+    if (strcmp(name, ".") == 0){
+      continue;
+    }
+    if (strcmp(name, "..") == 0){
+      for (i = 0; currentpath[i]; i++)
+        ;
+      i--;
+      if (i == 0){
+        continue;
+      }
+      while (1){
+        currentpath[i--] = 0;
+        if (currentpath[i] == '/'){
+          break;
+        }
+      }
+      continue;
+    }
+    for (i = 0; currentpath[i]; i++)
+      ;
+    for (j = 0; name[j]; j++){
+      currentpath[i++] = name[j];    
+    }
+    currentpath[i++] = '/';
+    currentpath[i] = 0;
+      
+  }
+  
+  return 0;
+}
+
+
+
 int
 main(void)
 {
   static char buf[100];
   int fd;
+  initHistory(&hs);
+  getHistory(&hs);
+  passHistory(&hs);
   
+  char currentpath[255];
   // Assumes three file descriptors open.
   while((fd = open("console", O_RDWR)) >= 0){
     if(fd >= 3){
@@ -154,23 +282,32 @@ main(void)
       break;
     }
   }
-  
+  strcpy(currentpath, "/");
   // Read and run input commands.
-  while(getcmd(buf, sizeof(buf)) >= 0){
+  while(getcmd(buf, sizeof(buf), currentpath) >= 0){
+    addHistory(&hs, buf);
+    passHistory(&hs);
+    setHistory(buf);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
       buf[strlen(buf)-1] = 0;  // chop \n
-      if(chdir(buf+3) < 0)
+      if(chdir(buf+3) < 0){
         printf(2, "cannot cd %s\n", buf+3);
+      }else{
+        updatecurrentpath(buf+3, currentpath);    
+      }
       continue;
     }
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
   }
+  
   exit();
 }
+
+
 
 void
 panic(char *s)
@@ -263,6 +400,7 @@ backcmd(struct cmd *subcmd)
 char whitespace[] = " \t\r\n\v";
 char symbols[] = "<|>&;()";
 
+
 int
 gettoken(char **ps, char *es, char **q, char **eq)
 {
@@ -293,6 +431,28 @@ gettoken(char **ps, char *es, char **q, char **eq)
       s++;
     }
     break;
+  case '1':
+    if(*(s+1) == '>'){
+      if(*(s+2) == '>'){
+        ret = '+';
+        s += 3;      
+      }else{
+        ret = '>';
+        s += 2;
+      }
+      break;
+    }
+  case '2':
+    if(*(s+1) == '>'){
+      if(*(s+2) == '>'){
+        ret = '/';
+        s += 3;      
+      }else{
+        ret = '*';
+        s += 2;
+      }
+      break;
+    }
   default:
     ret = 'a';
     while(s < es && !strchr(whitespace, *s) && !strchr(symbols, *s))
@@ -378,7 +538,10 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
   int tok;
   char *q, *eq;
 
-  while(peek(ps, es, "<>")){
+  while(peek(ps, es, "12<>")){
+    if (((*ps)[0] == '1' || (*ps)[0] == '2') && (*ps)[1] != '>'){
+      break;
+    }
     tok = gettoken(ps, es, 0, 0);
     if(gettoken(ps, es, &q, &eq) != 'a')
       panic("missing file for redirection");
@@ -387,10 +550,16 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
       cmd = redircmd(cmd, q, eq, O_RDONLY, 0);
       break;
     case '>':
-      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE, 1);
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_OVER, 1);
       break;
     case '+':  // >>
-      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE, 1);
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_ADD, 1);
+      break;
+    case '*':  // 2>
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_OVER, 2);
+      break;
+    case '/':  // 2>>
+      cmd = redircmd(cmd, q, eq, O_WRONLY|O_CREATE|O_ADD, 2);
       break;
     }
   }
@@ -433,7 +602,7 @@ parseexec(char **ps, char *es)
     if((tok=gettoken(ps, es, &q, &eq)) == 0)
       break;
     if(tok != 'a')
-      panic("syntax");
+      panic("syntax!");
     cmd->argv[argc] = q;
     cmd->eargv[argc] = eq;
     argc++;
@@ -492,3 +661,308 @@ nulterminate(struct cmd *cmd)
   }
   return cmd;
 }
+
+void initHistory(struct history* hs){
+  hs->length = 1;
+  hs->curcmd = 0;
+  hs->lastcmd = 0;
+}
+
+void addHistory(struct history* hs, char* cmd){
+  if (cmd[0] == '\n')
+    return;
+  int l = strlen(cmd);
+  int last = hs->lastcmd;
+  strcpy(hs->record[last], cmd);
+  if (hs->record[last][l - 1] == '\n')
+    hs->record[last][l - 1] = '\0';
+  last = (last + 1) % H_NUMBER;
+  hs->record[last][0] = '\0';
+  hs->lastcmd = last;
+  hs->curcmd = last;
+  if (hs->length < H_NUMBER)
+    hs->length++;
+}
+
+void getHistory(struct history* hs){ 
+  const int bufSize = 128;
+  int fp = open("/.history", O_RDONLY | O_CREATE);
+  int i, length, pos;
+
+  char buf[bufSize];
+  char tmp[bufSize];
+
+  pos = 0;
+  initHistory(hs);
+  while ((length = read(fp, buf, bufSize)) > 0){
+    for (i = 0; i < length; ++i){
+      if (buf[i] == '\n'){
+        tmp[pos] = '\0';
+        addHistory(hs, tmp);
+        pos = 0;
+      }
+      else{
+        tmp[pos++] = buf[i];
+      }
+    }
+  }
+
+  close(fp);
+}
+
+void setHistory(char* cmd){
+    int fp = open("/.history", O_WRONLY | O_CREATE | O_ADD);
+    write(fp, cmd, strlen(cmd));
+    close(fp);
+}
+
+/*
+void setHistory(struct history* hs){
+  if (!hs || hs->length == 0)
+    return ;
+
+  int fp = open("/.history",O_WRONLY | O_CREATE | O_ADD);  
+  int pos, last;
+
+  last = hs->lastcmd;
+  if (hs->length == H_NUMBER){
+    pos = last + 1;
+  }
+  else{
+    pos = 0;
+  }
+
+  while (pos != last){
+    write(fp, hs->record[pos], strlen(hs->record[pos]));
+    write(fp, "\n", 1);
+    pos = (pos + 1) % H_NUMBER;
+  }
+
+  close(fp);
+}
+*/
+
+//input = filename
+//pattern = char[] contains wildcards
+//0 = no match
+//1 = match
+//When pattern is "" will return a match
+int
+matchesPattern( char* input, char* pattern)
+{
+  int i, z;
+  if(pattern[0] == '\0')
+    return 1;
+    
+  for(i = 0; pattern[i] != '\0'; i++)
+  {
+    if(pattern[i] == '\0')
+    {
+      return 0; //Pattern has ended but still some left, meaning no match
+    }
+        
+    else if(pattern[i] == '?')
+    {
+      continue; //? replaces a character, no need to check if there is a match
+    }
+        
+    else if(pattern[i] == '*')
+    {
+      //Pattern has matched up until now, but now need to check
+      //the rest of the pattern
+            
+      //Checking for the match of pattern starting after the *
+      //If the match isn't found, shift input by 1 and check again
+      //If no match is found then pattern doesn't exist
+      for(z = i; input[z] != '\0'; z++)
+      {
+        if(matchesPattern(input + z, pattern + i + 1) == 1)
+        {
+          //Pattern found, return true
+          return 1;
+        }
+      }
+      //If this line was hit the pattern after * couldn't be found anywhere
+      return 0;
+    }
+    else if(pattern[i] == '['){
+        int j;
+        int match = 0;
+        int flag = 0;
+        //find
+        for (j = i+1; ; j++) {
+            if(pattern[j] == ']'){
+                break;
+            }
+            if (pattern[j] == '-') {
+                flag++;
+            }
+        }
+        if(flag >= 2){
+            return 0;//Wrong wildcard format
+        }
+        if(flag == 0){
+            int k;
+            for(k = i+1;k<j;k++){
+                if(pattern[k] == input[i]){
+                    match = 1;
+                }
+            }
+
+        }
+        else{
+            int len = pattern[j-1] - pattern[i+1] +1;
+            int k;
+            char p = pattern[i+1];
+            for(k = 0;k < len;k++){
+                if(p == input[i]){
+                    match = 1;
+                }
+                p++;
+            }
+
+        }
+        if(match >= 1){
+            if(matchesPattern(input+i+1, pattern+j+1) == 1){
+                return 1;
+            }
+            else{
+                return 0;
+            }
+        }
+        else{
+            return 0;
+        }
+        
+    }
+    else if(pattern[i] != input[i])
+    {
+      return 0; //Didn't match input
+    }
+    //Characters matched, keep continuing
+  }
+  //To hit here the current pattern must contain no * and must have all characters matching
+  return 1;
+}
+
+char*
+fmtname(char *path)
+{
+  static char buf[DIRSIZ+1];
+  char *p;
+  
+  // Find first character after last slash.
+  for(p=path+strlen(path); p >= path && *p != '/'; p--)
+    ;
+  p++;
+  
+  // Return blank-padded name.
+  if(strlen(p) >= DIRSIZ)
+    return p;
+  memmove(buf, p, strlen(p));
+  buf[strlen(p)]=0;//memmove(buf+strlen(p), 0, DIRSIZ-strlen(p));
+  return buf;
+}
+
+void initFilelist(struct fileList * fl){
+  fl->len = 0;
+  int i;
+  for(i = 0;i < FILENUMBER;i++){
+    fl->list[i][0] = '\0';
+  }
+}
+
+void addFilelist(struct fileList *fl,char* filename){
+  if(fl->len >= FILENUMBER)
+    return;
+  strcpy(fl->list[fl->len],filename);
+  //printf(2,"%d : %s\n",fl->len,fl->list[fl->len]);
+  fl->len++;
+}
+
+void getFilelist(char *path,struct fileList *fl)
+{
+  char buf[512], *p;
+  int fd;
+  struct dirent de;
+  struct stat st;
+  if((fd = open(path, 0)) < 0){
+    //printf(2, "ls: cannot open %s\n", path);
+    return;
+  }
+  
+  if(fstat(fd, &st) < 0){
+    //printf(2, "ls: cannot stat %s\n", path);
+    close(fd);
+    return;
+  }
+  
+  switch(st.type){
+  case T_FILE:
+    //printf(1, "%s %d %d %d\n", fmtname(path), st.type, st.ino, st.size);
+    //printf(2,"%s\n",fmtname(path));
+    addFilelist(fl,fmtname(path));
+    break;
+  
+  case T_DIR:
+    if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
+      printf(1, "ls: path too long\n");
+      break;
+    }
+    strcpy(buf, path);
+    p = buf+strlen(buf);
+    *p++ = '/';
+    while(read(fd, &de, sizeof(de)) == sizeof(de)){
+      if(de.inum == 0)
+        continue;
+      memmove(p, de.name, DIRSIZ);
+      p[DIRSIZ] = 0;
+      if(stat(buf, &st) < 0){
+        printf(1, "ls: cannot stat %s\n", buf);
+        continue;
+      }
+      //printf(1, "%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      //printf(2,"%s\n",fmtname(buf));
+      addFilelist(fl,fmtname(buf));
+    }
+    break;
+  }
+  close(fd);
+}
+
+void printFilelsit(struct fileList* fl){
+  int i;
+  for(i = 0; i < fl->len;i++){
+    printf(2,"%d File Name: %s\n",i,fl->list[i] );
+  }
+
+}
+
+int checkWildcards(char *str){
+  int i;
+  for(i = 0;str[i] != '\0';i++){
+    if(str[i] == '*' || str[i] == '?'){
+      return 1;
+    }
+    if(str[i] == '['){
+      int j;
+      for(j = i+1;str[j] != '\0';j++){
+        if(str[j] == ']'){
+          return 1;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+void getMatchList(char* filename,struct fileList *allfile,struct fileList *matchfile){
+  int i;
+  int len = allfile->len;
+  for(i = 0;i < len;i++){
+    if(matchesPattern(allfile->list[i],filename)){
+      addFilelist(matchfile,allfile->list[i]);
+    }
+  }
+}
+

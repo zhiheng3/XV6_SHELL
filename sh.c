@@ -597,11 +597,10 @@ void addHistory(struct history* hs, char* cmd){
   if (cmd[0] == '\n')
     return;
   int l = strlen(cmd);
-  if (cmd[l - 1] == '\n')
-    cmd[l - 1] = '\0';
-
   int last = hs->lastcmd;
   strcpy(hs->record[last], cmd);
+  if (hs->record[last][l - 1] == '\n')
+    hs->record[last][l - 1] = '\0';
   last = (last + 1) % H_NUMBER;
   hs->record[last][0] = '\0';
   hs->lastcmd = last;
@@ -640,7 +639,7 @@ void setHistory(struct history* hs){
   if (!hs || hs->length == 0)
     return ;
 
-  int fp = open(".history",O_WRONLY | O_CREATE);  
+  int fp = open("/.history",O_WRONLY | O_CREATE);  
   int pos, last;
 
   last = hs->lastcmd;

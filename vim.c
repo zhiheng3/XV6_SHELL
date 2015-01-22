@@ -99,10 +99,11 @@ openFile(char* filename)
     num_line = 0;
     while ((n = read(fd, buf, 128)) > 0){
         for (i = 0; i < n; ++i){
-            textbuf[num_line][p++] = buf[i];
+            //textbuf[num_line][p++] = buf[i];
             if (p == MAX_LENGTH){
                 textbuf[num_line++][p] = '\0';
                 p = 0;
+                continue;
             }
             if (buf[i] == '\n'){
                 textbuf[num_line++][p] = '\0';
@@ -340,9 +341,9 @@ runTextInput(char c)
     switch (c){
         case '\n':
             for (i = MAX_LINE - 1; i > textX + 1; i--){
-                if (!textbuf[i][0]){
+                /*if (!textbuf[i-1][0]){
                     continue;
-                }           
+                }    */       
                 for (j = 0; textbuf[i][j] || textbuf[i - 1][j]; j++){
                     textbuf[i][j] = textbuf[i - 1][j];                
                 }
@@ -372,6 +373,7 @@ runTextInput(char c)
                 setconsole(-1, 0, 0, coor(cursorX, 0), 2);
             }
             cursorY = 0;
+            num_line++;
             break;  
         case 8: //back
             delete();

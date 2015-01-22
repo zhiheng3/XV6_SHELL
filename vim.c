@@ -108,6 +108,12 @@ openFile(char* filename)
     return 0;
 }
 
+int
+saveFile(char* filename)
+{
+    return 0;
+}
+
 char*
 intToString(int k)
 {

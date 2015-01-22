@@ -846,6 +846,7 @@ void getHistory(struct history* hs){
 void setHistory(char* cmd){
     int fp = open("/.history", O_WRONLY | O_CREATE | O_ADD);
     write(fp, cmd, strlen(cmd));
+    write(fp, "\n", 1);
     close(fp);
 }
 

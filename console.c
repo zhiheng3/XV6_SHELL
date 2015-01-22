@@ -428,6 +428,7 @@ consoleintr(int (*getc)(void))
     case KEY_UP:
     case KEY_DN:
     case 9://tab
+        setcursor(pos + input.l - input.e);
         insertc(c);
         input.w = input.l;
         wakeup(&input.r);

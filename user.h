@@ -24,6 +24,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int passHistory(void*);
+int setconsole(int, int, int, int, int);
 
 
 // ulib.c

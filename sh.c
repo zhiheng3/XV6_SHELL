@@ -299,9 +299,11 @@ main(void)
       }
       continue;
     }
+    setconsole(-1, 0, 0, -1, 1);
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
+    setconsole(-1, 0, 0, -1, 0);
   }
   
   exit();

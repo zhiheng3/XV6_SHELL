@@ -171,11 +171,12 @@ UPROGS=\
 	_sh\
 	_stressfs\
 	_usertests\
+	_vim\
 	_wc\
 	_zombie\
 
-fs.img: mkfs README input_history path $(UPROGS)
-	./mkfs fs.img README input_history path $(UPROGS)
+fs.img: mkfs README path $(UPROGS)
+	./mkfs fs.img README path $(UPROGS)
 
 -include *.d
 

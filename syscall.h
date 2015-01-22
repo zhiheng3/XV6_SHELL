@@ -22,3 +22,4 @@
 #define SYS_close  21
 
 #define SYS_passHistory 22
+#define SYS_setconsole 23

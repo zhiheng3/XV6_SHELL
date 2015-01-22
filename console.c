@@ -354,6 +354,13 @@ consoleintr(int (*getc)(void))
     uartputc(input.buf[i]);
   uartputc('\n');*/
   while((c = getc()) >= 0){
+    if (consolemode == 2){
+      input.buf[input.l++ % INPUT_BUF] = c;
+      input.e = input.l;
+      input.w = input.l;
+      wakeup(&input.r);
+      continue;
+    }
     switch(c){
     case C('C'):  // kill current process
       sendsignal(1);
@@ -398,6 +405,8 @@ consoleintr(int (*getc)(void))
         }
         break;
     case KEY_UP:
+        if (consolemode > 0)
+            break;
         if (hs.length != H_NUMBER && hs.curcmd == 0)
             break;
         if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER)
@@ -409,6 +418,8 @@ consoleintr(int (*getc)(void))
         break;
 
     case KEY_DN:
+        if (consolemode > 0)
+            break;
         if (hs.curcmd == hs.lastcmd)
             break;
         clearline();

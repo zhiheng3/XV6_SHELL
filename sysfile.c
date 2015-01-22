@@ -13,10 +13,42 @@
 #include "fs.h"
 #include "file.h"
 #include "fcntl.h"
+#include "memlayout.h"
+#include "x86.h"
 
 #include "history.h"
 #include "var_in_kernel.h"
 
+#define CRTPORT 0x3d4
+static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
+
+//Edit console output
+int 
+sys_setconsole(void)
+{
+    int pos, ch, color, cursor, mode;
+    if (argint(0, &pos) < 0 || argint(1, &ch) < 0)
+        return -1;
+    if (argint(2, &color) < 0)
+        color = 0x0700;
+    if (argint(3, &cursor) < 0)
+        cursor = -1;
+    if (argint(4, &mode) < 0)
+        mode = 0;
+    if (pos >= 0){
+        crt[pos] = (ch & 0xff) | color;
+    }
+    if (cursor >= 0){
+        outb(CRTPORT, 14);
+        outb(CRTPORT+1, cursor >> 8);
+        outb(CRTPORT, 15);
+        outb(CRTPORT+1, cursor);
+    }
+    if (mode < 0)
+        mode = 0;
+    consolemode = mode;
+    return 0;
+}
 
 int sys_passHistory(void){
   struct history *p = 0;

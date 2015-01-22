@@ -279,6 +279,7 @@ o Open a new line
 a Insert at next position
 A Insert at end of line
 r Replace character
+R Replace mode
 x Delete character
 h move left
 j move up
@@ -308,6 +309,8 @@ runControl()
 {
     switch (controlbuf[0]){
         case 'i':
+            mode = 1;
+            showMessage("-- INSERT --");
             break;
         case 'o':
             break;
@@ -316,6 +319,10 @@ runControl()
         case 'A':
             break;
         case 'r':
+            break;
+        case 'R':
+            mode = 2;
+            showMessage("-- REPLACE --");
             break;
         case ':':
             showMessage(controlbuf);

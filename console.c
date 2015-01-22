@@ -292,7 +292,7 @@ deletec(int mode)
         else
             return ;
     }
-
+    
     int i, j;
     for (i = input.e, j = pos; i < input.l; ++i, ++j){
         input.buf[i] = input.buf[i + 1];
@@ -312,6 +312,25 @@ clearline()
         crt[i] = ' ' | WHITE_ON_BLACK;
     }
     input.l = input.w;
+}
+
+void
+clearc()
+{
+  acquire(&input.lock);
+  int pos = getcursor();
+  if (pos > 0){  
+    input.buf[input.w] = 0;
+    int ipos = --input.w;
+    input.r--;
+    input.l--;
+    pos--;
+    crt[pos] = ' ' | WHITE_ON_BLACK;
+    setcursor(pos);
+    input.e = ipos;
+  }
+  release(&input.lock);
+  return;
 }
 
 void
@@ -426,7 +445,11 @@ consoleintr(int (*getc)(void))
         hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
         insertline(hs.record[hs.curcmd]);
         break;
-
+    case ']':
+        insertc(c);
+        input.w = input.l;
+        wakeup(&input.r);
+        break;
     default: //Insert
       if(c != 0 && input.l-input.r < INPUT_BUF){
         c = (c == '\r') ? '\n' : c;
@@ -444,6 +467,8 @@ consoleintr(int (*getc)(void))
         }
         else
             insertc(c);
+            //input.w = input.l;
+            //wakeup(&input.r);
       }
       break;
     }

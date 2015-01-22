@@ -181,8 +181,8 @@ runcmd(struct cmd *cmd)
   exit();
 }
 
-int
-getcmd(char *buf, int nbuf, char *currentpath)
+void
+printcwd(char *currentpath)
 {
   int len;
   if (currentpath[1] != 0){
@@ -192,9 +192,72 @@ getcmd(char *buf, int nbuf, char *currentpath)
   }else{
     printf(2, "%s$ ", currentpath);
   }
+}
+
+int
+getcmd(char *buf, int nbuf, char *currentpath)
+{
+  int i, flag = 0, j;
+  printcwd(currentpath);
   
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
+  char c;
+  for(i=0; i+1 < nbuf; ){ 
+    c = getc();
+    if (!flag && c != ' '){
+      flag = 1;
+    }
+    if(flag == 1 && c == ' '){
+      flag = 2;
+    }
+    if (c == ']' && flag == 1){
+      clearc();
+      initFilelist(&filelist);
+      initFilelist(&templist);
+
+      getFilelist("/",&filelist);
+      
+      buf[i] = '*';
+      if(checkWildcards(buf)){
+        getMatchList(buf, &filelist, &templist);
+      }
+      if (templist.len == 1){
+        for (; templist.list[0][i]; i++){
+          buf[i] = templist.list[0][i];
+          printf(1, "%c", buf[i]);        
+        }
+        continue;
+      }
+      if (templist.len > 1){
+        buf[i] = '\0';
+        printf(1, "\n");
+        for (j = 0; j < templist.len; j++){
+          printf(1, "%s    ", templist.list[j]);
+        }
+        printf(2, "\n");
+        printcwd(currentpath);
+        printf(2, "%s", buf);
+        continue;
+      }
+      continue;
+      /*for(i = 0;i < templist.len;i++){
+        if(ecmd->argv[i+1] == 0){
+          ecmd->argv[i+1] = malloc((MAXARGS)*sizeof(char));
+          ecmd->argv[i+1][0] = '\0';
+        }
+      int l = strlen(templist.list[i]);
+      strcpy(ecmd->argv[i+1],templist.list[i]);
+      ecmd->argv[i+1][l] = '\0';*/
+
+
+//      break;
+    }
+    if(c == '\n' || c == '\r')
+      break;
+    buf[i++] = c;
+  }
+  buf[i] = '\0';
+  //gets(buf, nbuf);
   if(buf[0] == 0) // EOF
     return -1;
   return 0;
@@ -291,7 +354,7 @@ main(void)
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Clumsy but will have to do for now.
       // Chdir has no effect on the parent if run in the child.
-      buf[strlen(buf)-1] = 0;  // chop \n
+      //buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0){
         printf(2, "cannot cd %s\n", buf+3);
       }else{

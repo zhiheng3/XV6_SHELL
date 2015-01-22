@@ -29,5 +29,7 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
+
 SYSCALL(passHistory)
 SYSCALL(setconsole)
+SYSCALL(clearc)

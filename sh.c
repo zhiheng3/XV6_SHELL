@@ -184,7 +184,7 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf, char *currentpath)
 {
-  int len;
+  int len, i;
   if (currentpath[1] != 0){
     currentpath[(len = strlen(currentpath)) - 1] = 0;
     printf(2, "%s$ ", currentpath);
@@ -194,7 +194,20 @@ getcmd(char *buf, int nbuf, char *currentpath)
   }
   
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
+  char c;
+  for(i=0; i+1 < nbuf; ){
+    c = getc();
+    if (c == ']'){
+      clearc();
+      
+      break;
+    }
+    if(c == '\n' || c == '\r')
+      break;
+    buf[i++] = c;
+  }
+  buf[i] = '\0';
+  //gets(buf, nbuf);
   if(buf[0] == 0) // EOF
     return -1;
   return 0;

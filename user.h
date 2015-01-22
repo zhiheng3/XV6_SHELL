@@ -23,7 +23,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+
 int passHistory(void*);
+void clearc(void);
 
 
 // ulib.c
@@ -34,6 +36,7 @@ char* strchr(const char*, char c);
 int strcmp(const char*, const char*);
 void printf(int, char*, ...);
 char* gets(char*, int max);
+char getc(void);
 uint strlen(char*);
 void* memset(void*, int, uint);
 void* malloc(uint);

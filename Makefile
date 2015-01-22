@@ -28,6 +28,7 @@ OBJS = \
 	vectors.o\
 	vm.o\
 	var_in_kernel.o\
+  sysconsole.o\
 
 # Cross-compiling (e.g., on Mac OS X)
 # TOOLPREFIX = i386-jos-elf

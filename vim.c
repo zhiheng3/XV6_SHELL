@@ -258,6 +258,10 @@ runCursorCtrl(char c)
         case KEY_END:
             moveCursor(0, 10000);
             return 1;
+        case KEY_INS:
+            mode = 1;
+            showMessage("-- INSERT --");
+            return 1;
     }
     return 0;
 }
@@ -265,7 +269,7 @@ runCursorCtrl(char c)
 void
 runTextInput(char c)
 {
-
+    setconsole(coor(cursorX, cursorY), c, GRAY, -1, 2);
 }
 
 /*
@@ -327,6 +331,8 @@ parseInput(char c)
     if (c == KEY_ESC){
         mode = 0;
         controlp = 0;
+        controlbuf[0] = 0;
+        showMessage("");
         return ;
     }
     if (runCursorCtrl(c) != 0){
@@ -336,6 +342,7 @@ parseInput(char c)
     if (!isTextChar(c) && c != 8 && c != 10 && c != 13)
         return ;
     if (mode == 0){
+        showMessage("");
         if (controlp >= 60)
             return ;
         if (c == ':'){

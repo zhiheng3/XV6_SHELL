@@ -51,7 +51,7 @@ int cursorX, cursorY;
 int num_line = 0; //Number of lines
 int mode = 0; //0,Control 1,Insert 2,Replace
 char filename[100]; //Default filename
-char textbuf[MAX_LINE][MAX_LENGTH + 1];
+char textbuf[MAX_LINE][MAX_LENGTH + 20];
 
 char controlbuf[65];
 int controlp = 0;
@@ -85,6 +85,7 @@ quit()
 {
     init();
     setconsole(-1, 0, 0, 0, 0);
+    printf(1, "\n");
     exit();
 }
 
@@ -99,18 +100,13 @@ openFile(char* filename)
     num_line = 0;
     while ((n = read(fd, buf, 128)) > 0){
         for (i = 0; i < n; ++i){
-            //textbuf[num_line][p++] = buf[i];
-            if (p == MAX_LENGTH){
-                textbuf[num_line++][p] = '\0';
-                p = 0;
-                continue;
-            }
             if (buf[i] == '\n'){
                 textbuf[num_line++][p] = '\0';
                 p = 0;
             }
             else{
-                textbuf[num_line][p++] = buf[i];
+                if (p < MAX_LENGTH)
+                    textbuf[num_line][p++] = buf[i];
             }
         }
     }
@@ -121,7 +117,7 @@ openFile(char* filename)
 int
 saveFile(char* filename)
 {
-    int fd = open(filename, O_WRONLY | O_CREATE);
+    int fd = open(filename, O_WRONLY | O_CREATE | O_OVER);
     if (fd < 0)
         return fd;
     int i;
@@ -204,9 +200,9 @@ showText()
     int n = num_line - startline;
     if (n > 24)
         n = 24;
-    for (i = 0; i < n; ++i)
+    for (i = 0; i < 24; ++i)
         for (j = 0; j < CONSOLE_WIDTH; ++j)
-            setconsole(coor(i, j), 0, BLACK, -1, 2);
+            setconsole(coor(i, j), 0, GRAY, -1, 2);
     for (i = startline; i < startline + n; ++i){
         /*
         digit = intToString(i);
@@ -214,8 +210,7 @@ showText()
             setconsole(coor(i, j), digit[j], GRAY, -1, 2);*/
         l = strlen(textbuf[i]);
         for (j = 0; j < l; ++j)
-            if (textbuf[i][j] != '\n')
-                setconsole(coor(i - startline, j + offset), textbuf[i][j], WHITE_ON_BLACK, -1, 2);
+            setconsole(coor(i - startline, j + left), textbuf[i][j], WHITE_ON_BLACK, -1, 2);
     }
     showCoor();
 }
@@ -313,37 +308,122 @@ runCursorCtrl(char c)
 }
 
 void
+insertline()
+{
+    int i, j, l, textX = cursorX + startline + 1;
+    num_line++;
+    for (i = num_line - 1; i > textX; --i){
+        l = strlen(textbuf[i - 1]);
+        for (j = 0; j < l; ++j)
+            textbuf[i][j] = textbuf[i - 1][j];
+        textbuf[i][j] = 0;
+    }
+    textbuf[num_line][j] = 0;
+    textbuf[textX][0] = 0;
+    showText();
+}
+
+void
+deleteline(int offset)
+{
+    int i, j, l, textX = cursorX + startline + offset;
+    num_line--;
+    for (i = textX; i < num_line; ++i){
+        l = strlen(textbuf[i + 1]);
+        for (j = 0; j < l; ++j)
+            textbuf[i][j] = textbuf[i + 1][j];
+        textbuf[i][j] = 0;
+    }
+    textbuf[num_line][0] = 0;
+    if (num_line == 0)
+        insertline();
+    showText();
+}
+
+void
 delete()
 {
-    int i, textX = cursorX + startline;
+    int i, j, l1, l2, textX = cursorX + startline, textY = cursorY + left;
     char c;
-    if (cursorY == 0){
+    if (cursorY == left){
+        if (textX == 0)
+            return ;
+        l1 = strlen(textbuf[textX - 1]);
+        l2 = strlen(textbuf[textX]);
+        moveCursor(-1, 10000);
+        for (i = 0, j = l1; i < l2 && j < MAX_LENGTH; ++i, ++j)
+            textbuf[textX - 1][j] = textbuf[textX][i];
+        textbuf[textX - 1][j] = 0;
+        deleteline(1);
+        showText();
         return;
     }
-    for (i = cursorY - 1; i < MAX_LENGTH; i++){
+    l1 = strlen(textbuf[textX]);
+    for (i = textY - 1; i < l1; i++){
         textbuf[textX][i] = textbuf[textX][i + 1];
     }
-    for (i = cursorY - 1; i < MAX_LENGTH; i++){
+    l1--;
+    for (i = textY - 1; i < l1; i++){
         c = textbuf[textX][i];
-        if (c == '\n'){
-            c = 0;
-        }
         setconsole(coor(cursorX, i), c, GRAY, -1, 2);    
     }
+    setconsole(coor(cursorX, i), 0, GRAY, -1, 2);
     moveCursor(0, -1);
+}
+
+void
+insert(char c)
+{
+    int i, l, textX = cursorX + startline, textY = cursorY + left;
+    l = strlen(textbuf[textX]);
+    if (mode == 1){
+        if (l >= MAX_LENGTH)
+            return ;
+        for (i = l; i > textY; --i)
+            textbuf[textX][i] = textbuf[textX][i - 1];
+        textbuf[textX][l + 1] = 0;
+        textbuf[textX][textY] = c;
+        for (i = textY; i < l + 1; ++i)
+            setconsole(coor(cursorX, i), textbuf[textX][i], GRAY, -1, 2);
+        moveCursor(0, 1);
+
+    }
+    if (mode == 0 || mode == 2){
+        textbuf[textX][textY] = c;
+        setconsole(coor(cursorX, cursorY), c, GRAY, -1, 2);
+        if (textY == l)
+            textbuf[textX][l + 1] = 0;
+        moveCursor(0, 1);
+    }
 }
 
 void
 runTextInput(char c)
 {
+    int i, j, textX = cursorX + startline, textY = cursorY + left;
+    int l = strlen(textbuf[textX]);
+    switch(c){
+        case 10: // Enter
+            insertline();
+            for (i = textY, j = 0; i < l; ++i, ++j){
+                textbuf[textX + 1][j] = textbuf[textX][i];
+                setconsole(coor(cursorX + 1, j), textbuf[textX][i], GRAY, -1, 2);
+                textbuf[textX][i] = 0;
+                setconsole(coor(cursorX, cursorY + j), 0, GRAY, -1, 2);
+            }
+            moveCursor(1, -10000);
+            break;
+        case 8: // Backspace
+            delete();
+            break;
+        default:
+            insert(c);
+    }/*
     int i, j, textX = cursorX + startline;
     char tail, ch;
     switch (c){
         case '\n':
-            for (i = MAX_LINE - 1; i > textX + 1; i--){
-                /*if (!textbuf[i-1][0]){
-                    continue;
-                }    */       
+            for (i = MAX_LINE - 1; i > textX + 1; i--){         
                 for (j = 0; textbuf[i][j] || textbuf[i - 1][j]; j++){
                     textbuf[i][j] = textbuf[i - 1][j];                
                 }
@@ -395,14 +475,8 @@ runTextInput(char c)
             if (tail != 0){
             //drop
             }
-    }
+    }*/
 }
-        
-    
-        
-    
-    
-
 
 /*
 command list
@@ -462,6 +536,13 @@ runCommand()
 }
 
 void
+clearControl()
+{
+    controlp = 0;
+    controlbuf[0] = 0;
+}
+
+void
 runControl()
 {
     switch (controlbuf[0]){
@@ -470,25 +551,71 @@ runControl()
             showMessage("-- INSERT --");
             break;
         case 'o':
+            mode = 1;
+            insertline();
+            moveCursor(1, 0);
+            showMessage("-- INSERT --");
             break;
         case 'a':
+            mode = 1;
+            moveCursor(0, 1);
+            showMessage("-- INSERT --");
             break;
         case 'A':
+            mode = 1;
+            moveCursor(0, 10000);
+            showMessage("-- INSERT --");
             break;
         case 'r':
-            break;
+            if (isTextChar(controlbuf[1])){
+                insert(controlbuf[1]);
+                moveCursor(0, -1);
+                break;
+            }
+            if (controlbuf[1] != 0)
+                break;
+            return ;
         case 'R':
             mode = 2;
             showMessage("-- REPLACE --");
             break;
+        case 'x':
+            moveCursor(0, 1);
+            delete();
+            saved = 0;
+            break;
+        case 'h':
+            if (cursorY == 0)
+                moveCursor(-1, 10000);
+            else
+                moveCursor(0, -1);
+            break;
+        case 'j':
+            moveCursor(-1, 0);
+            break;
+        case 'k':
+            moveCursor(1, 0);
+            break;
+        case 'l':
+            if (cursorY >= strlen(textbuf[cursorX + startline]) && cursorX + startline != num_line - 1)
+                moveCursor(1, -10000);
+            else
+                moveCursor(0, 1);
+            break;
+        case 'd':
+            deleteline(0);
+            moveCursor(0, -10000);
+            showMessage("1 line deleted");
+            saved = 0;
+            break;
         case ':':
             showMessage(controlbuf);
-            break;
+            return ;
         default:
-            controlp = 0;
-            controlbuf[0] = 0;
+            clearControl();
             break;
     }
+    clearControl();
 }
 
 void
@@ -496,13 +623,12 @@ parseInput(char c)
 {
     if (c == KEY_ESC){
         mode = 0;
-        controlp = 0;
-        controlbuf[0] = 0;
+        clearControl();
         showMessage("");
         return ;
     }
     if (runCursorCtrl(c) != 0){
-        controlp = 0;
+        clearControl();
         return ;
     }
     if (!isTextChar(c) && c != 8 && c != 10 && c != 13)
@@ -512,13 +638,11 @@ parseInput(char c)
         if (controlp >= 60)
             return ;
         if (c == ':'){
-            controlp = 0;
-            controlbuf[0] = 0;
+            clearControl();
         }
         if (c == 10){
             runCommand();
-            controlp = 0;
-            controlbuf[0] = 0;
+            clearControl();
             return ;
         }
         if (c == 8)
@@ -549,6 +673,9 @@ main(int argc, char *argv[])
         for (i = 0; i < strlen(argv[1]); ++i)
             filename[i] = argv[1][i];
         filename[i] = 0;
+        if (num_line == 0)
+            insertline();
+        moveCursor(-100,-100);
     }
     else{
         printf(1, "vim: please input filename\n");

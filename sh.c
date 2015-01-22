@@ -426,6 +426,10 @@ main(void)
       }
       continue;
     }
+    if(buf[0] == 'p' && buf[1] == 'w' && buf[2] == 'd'){
+      printf(2,"%s\n",currentpath);
+      continue;
+    }
     setconsole(-1, 0, 0, -1, 1);
     if(fork1() == 0)
       runcmd(parsecmd(buf));
@@ -881,30 +885,24 @@ matchesPattern( char* input, char* pattern)
 {
   int i, z;
   if(pattern[0] == '\0')
-    return 1;
-    
-  for(i = 0; pattern[i] != '\0'; i++)
-  {
-    if(pattern[i] == '\0')
-    {
+    return 1;    
+  for(i = 0; pattern[i] != '\0'; i++){
+    if(pattern[i] == '\0'){
       return 0; //Pattern has ended but still some left, meaning no match
     }
         
-    else if(pattern[i] == '?')
-    {
+    else if(pattern[i] == '?'){
       continue; //? replaces a character, no need to check if there is a match
     }
         
-    else if(pattern[i] == '*')
-    {
+    else if(pattern[i] == '*'){
       //Pattern has matched up until now, but now need to check
       //the rest of the pattern
             
       //Checking for the match of pattern starting after the *
       //If the match isn't found, shift input by 1 and check again
       //If no match is found then pattern doesn't exist
-      for(z = i; input[z] != '\0'; z++)
-      {
+      for(z = i; input[z] != '\0'; z++){
         if(matchesPattern(input + z, pattern + i + 1) == 1)
         {
           //Pattern found, return true
@@ -937,7 +935,6 @@ matchesPattern( char* input, char* pattern)
                     match = 1;
                 }
             }
-
         }
         else{
             int len = pattern[j-1] - pattern[i+1] +1;
@@ -949,7 +946,6 @@ matchesPattern( char* input, char* pattern)
                 }
                 p++;
             }
-
         }
         if(match >= 1){
             if(matchesPattern(input+i+1, pattern+j+1) == 1){
@@ -964,8 +960,7 @@ matchesPattern( char* input, char* pattern)
         }
         
     }
-    else if(pattern[i] != input[i])
-    {
+    else if(pattern[i] != input[i]){
       return 0; //Didn't match input
     }
     //Characters matched, keep continuing

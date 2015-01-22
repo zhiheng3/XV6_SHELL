@@ -325,6 +325,7 @@ clearc()
     input.r--;
     input.l--;
     pos--;
+    crt[pos] = ' ' | WHITE_ON_BLACK;
     setcursor(pos);
     input.e = ipos;
   }

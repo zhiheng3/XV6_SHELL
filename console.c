@@ -247,6 +247,7 @@ insertc(int c)
             crt[j] = crt[j - 1] | WHITE_ON_BLACK;
         }
         input.buf[input.e % INPUT_BUF] = c;
+        
         input.l++;
         
         if (c == '\n'){
@@ -333,6 +334,7 @@ clearc()
   return;
 }
 
+
 void
 insertline(char* buf)
 {
@@ -373,6 +375,7 @@ consoleintr(int (*getc)(void))
     uartputc(input.buf[i]);
   uartputc('\n');*/
   while((c = getc()) >= 0){
+  
     switch(c){
     case C('C'):  // kill current process
       sendsignal(1);
@@ -417,24 +420,8 @@ consoleintr(int (*getc)(void))
         }
         break;
     case KEY_UP:
-        if (hs.length != H_NUMBER && hs.curcmd == 0)
-            break;
-        if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER)
-            break;
-        uartputc('h');
-        clearline();
-        hs.curcmd = (hs.curcmd + H_NUMBER - 1) % H_NUMBER;
-        insertline(hs.record[hs.curcmd]);
-        break;
-
     case KEY_DN:
-        if (hs.curcmd == hs.lastcmd)
-            break;
-        clearline();
-        hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
-        insertline(hs.record[hs.curcmd]);
-        break;
-    case ']':
+    case 9://tab
         insertc(c);
         input.w = input.l;
         wakeup(&input.r);
@@ -456,8 +443,8 @@ consoleintr(int (*getc)(void))
         }
         else
             insertc(c);
-            //input.w = input.l;
-            //wakeup(&input.r);
+            /*input.w = input.l;
+            wakeup(&input.r);*/
       }
       break;
     }

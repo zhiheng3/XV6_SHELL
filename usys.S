@@ -32,3 +32,4 @@ SYSCALL(uptime)
 
 SYSCALL(passHistory)
 SYSCALL(clearc)
+SYSCALL(insertc)

@@ -10,5 +10,13 @@
 void
 sys_clearc(void)
 {
-    clearc();
+  clearc();
+}
+
+void
+sys_insertc(void)
+{
+  int c;
+  argint(0, &c);
+  insertc(c);
 }

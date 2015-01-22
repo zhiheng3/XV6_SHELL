@@ -8,7 +8,6 @@
 #define CONSOLE_WIDTH 80
 #define MAX_LINE 20
 #define MAX_LENGTH 80
-#define OFFSET 4
 
 #define BLACK 0x0000
 #define DARKBLUE 0x0100
@@ -29,9 +28,22 @@
 
 #define WHITE_ON_BLACK 0x0700
 
+#define KEY_HOME        0xE0
+#define KEY_END         0xE1
+#define KEY_UP          0xE2
+#define KEY_DN          0xE3
+#define KEY_LF          0xE4
+#define KEY_RT          0xE5
+#define KEY_PGUP        0xE6
+#define KEY_PGDN        0xE7
+#define KEY_INS         0xE8
+#define KEY_DEL         0xE9
+#define KEY_ESC         0x1B
+
 //Vim variables
 char* membuf[1000];
 
+int top = 0, bottom = 24, left = 0, right = 80;
 int offset = 0; //offset of every line(for line number)
 int startline = 0;
 int cursorX, cursorY;
@@ -40,8 +52,16 @@ int mode = 0; //0,Control 1,Insert 2,Replace
 char* filename = 0; //Default filename
 char textbuf[MAX_LINE][MAX_LENGTH + 1];
 
-char controlbuf[10];
+char controlbuf[65];
 int controlp = 0;
+
+int 
+isTextChar(char c)
+{
+    if (c >= ' ' && c <= '~')
+        return 1;
+    return 0;
+}
 
 int
 coor(int x, int y)
@@ -57,6 +77,14 @@ init()
         for (j = 0; j < CONSOLE_WIDTH; ++j)
             setconsole(coor(i, j), 0, WHITE_ON_BLACK, -1, 2);
     setconsole(-1, 0, 0, coor(cursorX, cursorY), 2);
+}
+
+void
+quit()
+{
+    init();
+    setconsole(-1, 0, 0, 0, 0);
+    exit();
 }
 
 int
@@ -130,6 +158,8 @@ showMessage(char* msg)
     int line = 24;
     int i, p = 0;
     int l = strlen(msg);
+    for (i = 0; i < 80; ++i)
+        setconsole(coor(line, i), 0, BLACK, -1, 2);
     if (l > 60)
         l = 60;
     for (i = 0; i < l; ++i)
@@ -147,6 +177,7 @@ showMessage(char* msg)
     for (i = 0; i < strlen(digit); ++i)
         tmp[p++] = digit[i];
     tmp[p++] = 'C';
+    tmp[p++] = 0;
     l = strlen(tmp);
     for (i = 0; i < l; ++i)
         setconsole(coor(line, i + 65), tmp[i], WHITE, -1, 2);
@@ -188,6 +219,17 @@ moveCursor(int dx, int dy)
 {
     cursorX += dx;
     cursorY += dy;
+    if (cursorX < top)
+        cursorX = top;
+    if (cursorX > bottom - 1)
+        cursorY = bottom - 1;
+    if (startline + cursorX > num_line - 1)
+        cursorX = num_line - startline - 1;
+    if (cursorY < left)
+        cursorY = left;
+    int l = strlen(textbuf[startline + cursorX]);
+    if (cursorY > l - 1)
+        cursorY = l - 1;
     setconsole(-1, 0, 0, coor(cursorX, cursorY), 2);
 }
 
@@ -195,6 +237,28 @@ moveCursor(int dx, int dy)
 int
 runCursorCtrl(char c)
 {
+    int t = c;
+    t &= 0xff;
+    switch (t){
+        case KEY_UP:
+            moveCursor(-1, 0);
+            return 1;
+        case KEY_DN:
+            moveCursor(1, 0);
+            return 1;
+        case KEY_LF:
+            moveCursor(0, -1);
+            return 1;
+        case KEY_RT:
+            moveCursor(0, 1);
+            return 1;
+        case KEY_HOME:
+            moveCursor(0, -10000);
+            return 1;
+        case KEY_END:
+            moveCursor(0, 10000);
+            return 1;
+    }
     return 0;
 }
 
@@ -204,25 +268,92 @@ runTextInput(char c)
 
 }
 
+/*
+command list
+i Insert at cursor position
+o Open a new line
+a Insert at next position
+A Insert at end of line
+r Replace character
+x Delete character
+h move left
+j move up
+k move down
+l move right
+y copy a line
+p paste a line
+d delete a line
+:q quit
+:w save
+:wq save & quit
+:q! quit without save
+*/
 void
 runCommand()
 {
+    if (controlbuf[0] != ':')
+        return ;
+    if (controlbuf[1] == 'q')
+        quit();
 
+    showMessage("Invalid command");
+}
+
+void
+runControl()
+{
+    switch (controlbuf[0]){
+        case 'i':
+            break;
+        case 'o':
+            break;
+        case 'a':
+            break;
+        case 'A':
+            break;
+        case 'r':
+            break;
+        case ':':
+            showMessage(controlbuf);
+            break;
+        default:
+            break;
+    }
 }
 
 void
 parseInput(char c)
 {
+    if (c == KEY_ESC){
+        mode = 0;
+        controlp = 0;
+        return ;
+    }
     if (runCursorCtrl(c) != 0){
         controlp = 0;
         return ;
     }
+    if (!isTextChar(c) && c != 8 && c != 10 && c != 13)
+        return ;
     if (mode == 0){
+        if (controlp >= 60)
+            return ;
         if (c == ':'){
             controlp = 0;
+            controlbuf[0] = 0;
         }
-        controlbuf[controlp++] = c;
-        runCommand();
+        if (c == 10){
+            runCommand();
+            controlp = 0;
+            controlbuf[0] = 0;
+            return ;
+        }
+        if (c == 8)
+            controlp--;
+        else
+            controlbuf[controlp++] = c;
+        controlbuf[controlp] = 0;
+        runControl();
     }
     else{
         runTextInput(c);
@@ -253,15 +384,9 @@ main(int argc, char *argv[])
     }
     int n;
     while ((n = read(0, buf, sizeof(buf))) > 0){
-        if (buf[0] != 0){
-            write(1, buf, n);
-        }
-        if (buf[0] == 27)
-            break;
+        if (buf[0] != 0)
+            parseInput(buf[0]);
     }
-    init();
-    setconsole(-1, 0, 0, 0, 0);
-  exit();
   return 0;
 }
 

@@ -27,6 +27,7 @@ int uptime(void);
 int passHistory(void*);
 int setconsole(int, int, int, int, int);
 void clearc(void);
+void insertc(int c);
 
 
 // ulib.c

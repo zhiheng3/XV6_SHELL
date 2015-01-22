@@ -70,7 +70,7 @@ gets(char *buf, int max)
 char
 getc()
 {
-  char c;
+  int c;
   read(0, &c, 1);
   return c;
 }

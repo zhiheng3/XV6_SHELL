@@ -194,14 +194,28 @@ printcwd(char *currentpath)
   }
 }
 
+void
+renewline(char* buf, int nbuf)
+{
+  int j;
+  for(j = 0; buf[j]; j++){
+    clearc();
+  }
+  for(j = 0; buf[j]; j++){
+    insertc(buf[j]);
+  }
+  memset(buf, 0, nbuf);
+}
+
 int
 getcmd(char *buf, int nbuf, char *currentpath)
 {
   int i, flag = 0, j;
+  //char buf0[nbuf];
   printcwd(currentpath);
   
   memset(buf, 0, nbuf);
-  char c;
+  int c;
   for(i=0; i+1 < nbuf; ){ 
     c = getc();
     if (!flag && c != ' '){
@@ -210,7 +224,47 @@ getcmd(char *buf, int nbuf, char *currentpath)
     if(flag == 1 && c == ' '){
       flag = 2;
     }
-    if (c == ']' && flag == 1){
+    if((c == 0xE2)||(c+256 == 0xE2)){//key_up
+      clearc();
+      if (hs.length != H_NUMBER && hs.curcmd == 0){
+        renewline(buf, nbuf);
+        i = 0;
+        flag = 0;
+        continue;
+      }      
+      if (hs.curcmd == (hs.lastcmd + 1) % H_NUMBER){
+        renewline(buf, nbuf);
+        i = 0;
+        flag = 0;
+        continue;
+      }
+      for(j = 0; buf[j]; j++){
+        clearc();
+      } 
+      hs.curcmd = (hs.curcmd + H_NUMBER - 1) % H_NUMBER;
+      for(j = 0; hs.record[hs.curcmd][j]; j++ )
+        insertc(hs.record[hs.curcmd][j]);
+      i = 0;
+      flag = 0;
+      strcpy(buf, hs.record[hs.curcmd]);
+      continue;
+    }
+    if ((c == 0xE3)||(c+256 == 0xE3)){//key_down
+      clearc();
+      if (hs.curcmd != hs.lastcmd){
+        hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
+      }
+      for(j = 0; buf[j]; j++){
+        clearc();
+      }
+      for(j = 0; hs.record[hs.curcmd][j]; j++ )
+        insertc(hs.record[hs.curcmd][j]);
+      i = 0;
+      flag = 0;
+      strcpy(buf, hs.record[hs.curcmd]);
+      continue;
+    }
+    if (c == 9 && flag == 1){//tab
       clearc();
       initFilelist(&filelist);
       initFilelist(&templist);
@@ -226,6 +280,9 @@ getcmd(char *buf, int nbuf, char *currentpath)
           buf[i] = templist.list[0][i];
           printf(1, "%c", buf[i]);        
         }
+        renewline(buf, nbuf);
+        i = 0;
+        flag = 0;
         continue;
       }
       if (templist.len > 1){
@@ -236,21 +293,28 @@ getcmd(char *buf, int nbuf, char *currentpath)
         }
         printf(2, "\n");
         printcwd(currentpath);
-        printf(2, "%s", buf);
+        j = 0;
+        while(buf[j]){
+          insertc(buf[j++]);
+        }
+        memset(buf, 0, nbuf);
+        i = 0;
+        flag = 0;
         continue;
       }
+      buf[i] = '\0';
+      renewline(buf, nbuf);
+      i = 0;
+      flag = 0;
       continue;
-      /*for(i = 0;i < templist.len;i++){
-        if(ecmd->argv[i+1] == 0){
-          ecmd->argv[i+1] = malloc((MAXARGS)*sizeof(char));
-          ecmd->argv[i+1][0] = '\0';
-        }
-      int l = strlen(templist.list[i]);
-      strcpy(ecmd->argv[i+1],templist.list[i]);
-      ecmd->argv[i+1][l] = '\0';*/
-
-
-//      break;
+    }
+    if (c == 9 && flag != 1){
+      clearc();
+      buf[i] = '\0';
+      renewline(buf, nbuf);
+      i = 0;
+      flag = 0;
+      continue;
     }
     if(c == '\n' || c == '\r')
       break;

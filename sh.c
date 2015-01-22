@@ -215,16 +215,16 @@ getcmd(char *buf, int nbuf, char *currentpath)
   printcwd(currentpath);
   
   memset(buf, 0, nbuf);
-  int c;
+  char c;
   for(i=0; i+1 < nbuf; ){ 
     c = getc();
-    if (!flag && c != ' '){
-      flag = 1;
+    if (c != ' ' && i != 0){
+      if (buf[i -1] == ' '){
+        flag = i;
+      }
     }
-    if(flag == 1 && c == ' '){
-      flag = 2;
-    }
-    if((c == 0xE2)||(c+256 == 0xE2)){//key_up
+   
+    if(c+256 == 0xE2){//key_up
       clearc();
       if (hs.length != H_NUMBER && hs.curcmd == 0){
         renewline(buf, nbuf);
@@ -249,7 +249,7 @@ getcmd(char *buf, int nbuf, char *currentpath)
       strcpy(buf, hs.record[hs.curcmd]);
       continue;
     }
-    if ((c == 0xE3)||(c+256 == 0xE3)){//key_down
+    if (c+256 == 0xE3){//key_down
       clearc();
       if (hs.curcmd != hs.lastcmd){
         hs.curcmd = (hs.curcmd + 1) % H_NUMBER;
@@ -264,7 +264,7 @@ getcmd(char *buf, int nbuf, char *currentpath)
       strcpy(buf, hs.record[hs.curcmd]);
       continue;
     }
-    if (c == 9 && flag == 1){//tab
+    if (c == 9){//tab
       clearc();
       initFilelist(&filelist);
       initFilelist(&templist);
@@ -272,12 +272,12 @@ getcmd(char *buf, int nbuf, char *currentpath)
       getFilelist("/",&filelist);
       
       buf[i] = '*';
-      if(checkWildcards(buf)){
-        getMatchList(buf, &filelist, &templist);
+      if(checkWildcards(buf + flag)){
+        getMatchList(buf + flag, &filelist, &templist);
       }
       if (templist.len == 1){
-        for (; templist.list[0][i]; i++){
-          buf[i] = templist.list[0][i];
+        for (; templist.list[0][i - flag]; i++){
+          buf[i] = templist.list[0][i - flag];
           printf(1, "%c", buf[i]);        
         }
         renewline(buf, nbuf);
@@ -307,7 +307,7 @@ getcmd(char *buf, int nbuf, char *currentpath)
       i = 0;
       flag = 0;
       continue;
-    }
+    }/*
     if (c == 9 && flag != 1){
       clearc();
       buf[i] = '\0';
@@ -315,7 +315,7 @@ getcmd(char *buf, int nbuf, char *currentpath)
       i = 0;
       flag = 0;
       continue;
-    }
+    }*/
     if(c == '\n' || c == '\r')
       break;
     buf[i++] = c;

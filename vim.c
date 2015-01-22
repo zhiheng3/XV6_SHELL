@@ -6,7 +6,7 @@
 
 #define CONSOLE_HEIGHT 25
 #define CONSOLE_WIDTH 80
-#define MAX_LINE 20
+#define MAX_LINE 100
 #define MAX_LENGTH 80
 
 #define BLACK 0x0000
@@ -99,6 +99,10 @@ openFile(char* filename)
     while ((n = read(fd, buf, 128)) > 0){
         for (i = 0; i < n; ++i){
             textbuf[num_line][p++] = buf[i];
+            if (p == MAX_LENGTH){
+                textbuf[num_line++][p] = '\0';
+                p = 0;
+            }
             if (buf[i] == '\n'){
                 textbuf[num_line++][p] = '\0';
                 p = 0;
@@ -273,10 +277,95 @@ runCursorCtrl(char c)
 }
 
 void
+delete()
+{
+    int i, textX = cursorX + startline;
+    char c;
+    if (cursorY == 0){
+        return;
+    }
+    for (i = cursorY - 1; i < MAX_LENGTH; i++){
+        textbuf[textX][i] = textbuf[textX][i + 1];
+    }
+    for (i = cursorY - 1; i < MAX_LENGTH; i++){
+        c = textbuf[textX][i];
+        if (c == '\n'){
+            c = 0;
+        }
+        setconsole(coor(cursorX, i), c, GRAY, -1, 2);    
+    }
+    moveCursor(0, -1);
+}
+
+void
 runTextInput(char c)
 {
-    setconsole(coor(cursorX, cursorY), c, GRAY, -1, 2);
+    int i, j, textX = cursorX + startline;
+    char tail, ch;
+    switch (c){
+        case '\n':
+            for (i = MAX_LINE - 1; i > textX + 1; i--){
+                if (!textbuf[i][0]){
+                    continue;
+                }           
+                for (j = 0; textbuf[i][j] || textbuf[i - 1][j]; j++){
+                    textbuf[i][j] = textbuf[i - 1][j];                
+                }
+            }
+            memset(textbuf[textX+1], 0, MAX_LENGTH);
+            if (textX < MAX_LINE - 1){
+                strcpy(textbuf[textX+1], textbuf[textX] + cursorY);
+            }
+            memset(textbuf[textX] + cursorY, 0, MAX_LENGTH - cursorY);
+            textbuf[textX][cursorY] = '\n';
+            for (i = CONSOLE_HEIGHT - 2; i >= cursorX; i--){
+                if (!textbuf[i + startline][0]){
+                    continue;
+                }           
+                for (j = 0; j < CONSOLE_WIDTH; j++){
+                    ch = textbuf[i + startline][j];
+                    if (ch == '\n'){
+                        ch = 0;
+                    }
+                    setconsole(coor(i, j), ch, GRAY, -1, 2);              
+                }
+            }
+            if (cursorX < CONSOLE_HEIGHT-1){
+                setconsole(-1, 0, 0, coor(cursorX + 1, 0), 2);
+                cursorX += 1;
+            }else{
+                setconsole(-1, 0, 0, coor(cursorX, 0), 2);
+            }
+            cursorY = 0;
+            break;  
+        case 8: //back
+            delete();
+            break;
+        default:  
+            tail = textbuf[textX][CONSOLE_WIDTH -1];
+            for (i = CONSOLE_WIDTH -1; i > cursorY; i--){
+                if (textbuf[textX][i - 1] == 0){
+                    continue;
+                } 
+                if (textbuf[textX][i - 1] != '\n'){
+                    setconsole(coor(cursorX, i), textbuf[textX][i - 1], GRAY, -1, 2);
+                }
+                textbuf[textX][i] = textbuf[textX][i - 1];
+            }
+            textbuf[textX][cursorY] = c;
+            setconsole(coor(cursorX, cursorY), c, GRAY, -1, 2);
+            moveCursor(0, 1);
+            if (tail != 0){
+            //drop
+            }
+    }
 }
+        
+    
+        
+    
+    
+
 
 /*
 command list

@@ -43,13 +43,14 @@
 //Vim variables
 char* membuf[1000];
 
+int saved = 1;
 int top = 0, bottom = 24, left = 0, right = 80;
 int offset = 0; //offset of every line(for line number)
 int startline = 0;
 int cursorX, cursorY;
 int num_line = 0; //Number of lines
 int mode = 0; //0,Control 1,Insert 2,Replace
-char* filename = 0; //Default filename
+char filename[100]; //Default filename
 char textbuf[MAX_LINE][MAX_LENGTH + 1];
 
 char controlbuf[65];
@@ -97,20 +98,33 @@ openFile(char* filename)
     int n, i, p = 0;
     num_line = 0;
     while ((n = read(fd, buf, 128)) > 0){
-        for (i = 0; i < n; ++i){
-            textbuf[num_line][p++] = buf[i];
+        for (i = 0; i < n; ++i){    
             if (buf[i] == '\n'){
                 textbuf[num_line++][p] = '\0';
                 p = 0;
             }
+            else{
+                textbuf[num_line][p++] = buf[i];
+            }
         }
     }
+    close(fd);
     return 0;
 }
 
 int
 saveFile(char* filename)
 {
+    int fd = open(filename, O_WRONLY | O_CREATE);
+    if (fd < 0)
+        return fd;
+    int i;
+    for (i = 0; i < num_line; ++i)
+    {
+        write(fd, textbuf[i], strlen(textbuf[i]));
+        write(fd, "\n", 1);
+    }
+    close(fd);
     return 0;
 }
 
@@ -137,49 +151,36 @@ intToString(int k)
     return result;
 }
 
-void
-showText()
-{
-    init();
-    int i, j, l;
-    //char *digit;
-    int n = num_line - startline;
-    if (n > 24)
-        n = 24;
-    for (i = startline; i < startline + n; ++i){
-        /*
-        digit = intToString(i);
-        for (j = 0; j < strlen(digit); ++j)
-            setconsole(coor(i, j), digit[j], GRAY, -1, 2);*/
-        l = strlen(textbuf[i]);
-        for (j = 0; j < l; ++j)
-            if (textbuf[i][j] != '\n')
-                setconsole(coor(i, j + offset), textbuf[i][j], WHITE_ON_BLACK, -1, 2);
-    }
-}
-
 void 
 showMessage(char* msg)
 {
     int line = 24;
-    int i, p = 0;
+    int i;
     int l = strlen(msg);
-    for (i = 0; i < 80; ++i)
+    for (i = 0; i < 65; ++i)
         setconsole(coor(line, i), 0, BLACK, -1, 2);
     if (l > 60)
         l = 60;
     for (i = 0; i < l; ++i)
         setconsole(coor(line, i), msg[i], WHITE_ON_BLACK, -1, 2);
-    //position
+}
+
+void
+showCoor()
+{
+    int line = 24;
+    int i, p = 0, l;
+    for (i = 65; i < CONSOLE_WIDTH; ++i)
+        setconsole(coor(line, i), 0, WHITE, -1, 2);
     char tmp[20];
     char* digit;
-    digit = intToString(cursorX + 1);
+    digit = intToString(cursorX + 1 + startline);
     for (i = 0; i < strlen(digit); ++i)
         tmp[p++] = digit[i];
     tmp[p++] = 'R';
     tmp[p++] = ',';
     tmp[p++] = ' ';
-    digit = intToString(cursorY + 1);
+    digit = intToString(cursorY + 1 - left);
     for (i = 0; i < strlen(digit); ++i)
         tmp[p++] = digit[i];
     tmp[p++] = 'C';
@@ -189,7 +190,29 @@ showMessage(char* msg)
         setconsole(coor(line, i + 65), tmp[i], WHITE, -1, 2);
 }
 
-
+void
+showText()
+{
+    int i, j, l;
+    //char *digit;
+    int n = num_line - startline;
+    if (n > 24)
+        n = 24;
+    for (i = 0; i < n; ++i)
+        for (j = 0; j < CONSOLE_WIDTH; ++j)
+            setconsole(coor(i, j), 0, BLACK, -1, 2);
+    for (i = startline; i < startline + n; ++i){
+        /*
+        digit = intToString(i);
+        for (j = 0; j < strlen(digit); ++j)
+            setconsole(coor(i, j), digit[j], GRAY, -1, 2);*/
+        l = strlen(textbuf[i]);
+        for (j = 0; j < l; ++j)
+            if (textbuf[i][j] != '\n')
+                setconsole(coor(i - startline, j + offset), textbuf[i][j], WHITE_ON_BLACK, -1, 2);
+    }
+    showCoor();
+}
 
 char*
 getFileInfo()
@@ -225,18 +248,29 @@ moveCursor(int dx, int dy)
 {
     cursorX += dx;
     cursorY += dy;
-    if (cursorX < top)
+    if (cursorX < top){
+        if (startline > 0){
+            startline--;
+            showText();
+        }
         cursorX = top;
-    if (cursorX > bottom - 1)
-        cursorY = bottom - 1;
+    }
+    if (cursorX > bottom - 1){
+        if (num_line - startline > 24){
+            startline++;
+            showText();
+        }
+        cursorX = bottom - 1;
+    }
     if (startline + cursorX > num_line - 1)
         cursorX = num_line - startline - 1;
     if (cursorY < left)
         cursorY = left;
     int l = strlen(textbuf[startline + cursorX]);
-    if (cursorY > l - 1)
-        cursorY = l - 1;
+    if (cursorY > l)
+        cursorY = l;
     setconsole(-1, 0, 0, coor(cursorX, cursorY), 2);
+    showCoor();
 }
 
 //Cursor control 
@@ -304,9 +338,34 @@ runCommand()
 {
     if (controlbuf[0] != ':')
         return ;
-    if (controlbuf[1] == 'q')
-        quit();
-
+    if (controlbuf[1] == 'w' && (controlbuf[2] == ' ' || controlbuf[2] == 0 || controlbuf[2] == 'q')){
+        if (controlbuf[2] == ' '){
+            int i, l = strlen(controlbuf);
+            for (i = 3; i < l; ++i)
+                filename[i - 3] = controlbuf[i];
+            filename[i - 3] = 0;
+        }
+        if (saveFile(filename) != 0){
+            showMessage("Save failed!");
+            return ;
+        }
+        showMessage("Save succeed!");
+        if (controlbuf[2] == 'q')
+            quit();
+        return ;
+    }
+    if (controlbuf[1] == 'q'){
+        if (controlbuf[2] == '!' && controlbuf[3] == 0)
+            quit();
+        if (controlbuf[2] == 0){
+            if (saved == 0){
+                showMessage("File isn't saved. Force quit by \'q!\'");
+                return;
+            }
+            else
+                quit();
+        }
+    }
     showMessage("Invalid command");
 }
 
@@ -334,6 +393,8 @@ runControl()
             showMessage(controlbuf);
             break;
         default:
+            controlp = 0;
+            controlbuf[0] = 0;
             break;
     }
 }
@@ -376,6 +437,7 @@ parseInput(char c)
         runControl();
     }
     else{
+        saved = 0;
         runTextInput(c);
     }
 }
@@ -384,6 +446,7 @@ int
 main(int argc, char *argv[])
 {
     char buf[1];
+    int i;
 
     if (argc > 1){
         if (openFile(argv[1]) < 0)
@@ -391,13 +454,16 @@ main(int argc, char *argv[])
             printf(1, "vim: cannot open %s\n", argv[1]);
             exit();
         }
-        filename = argv[1];
+        for (i = 0; i < strlen(argv[1]); ++i)
+            filename[i] = argv[1][i];
+        filename[i] = 0;
     }
     else{
         printf(1, "vim: please input filename\n");
         exit();
     }
     cursorX = cursorY = 0;
+    init();
     showText();
     if (argc > 1){
         showMessage(getFileInfo());

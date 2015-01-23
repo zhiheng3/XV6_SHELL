@@ -85,7 +85,6 @@ quit()
 {
     init();
     setconsole(-1, 0, 0, 0, 0);
-    printf(1, "\n");
     exit();
 }
 

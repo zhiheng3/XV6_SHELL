@@ -323,7 +323,7 @@ getcmd(char *buf, int nbuf, char *currentpath)
   buf[i] = '\0';
   //gets(buf, nbuf);
   if(buf[0] == 0) // EOF
-    return -1;
+    return 0;
   return 0;
 }
 
